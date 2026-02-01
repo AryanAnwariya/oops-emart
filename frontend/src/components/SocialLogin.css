@@ -1,0 +1,149 @@
+.social-login {
+  margin: 1.5rem 0;
+}
+
+.social-divider {
+  position: relative;
+  text-align: center;
+  margin: 1.5rem 0;
+}
+
+.social-divider::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: #e0e0e0;
+}
+
+.social-divider span {
+  position: relative;
+  background: white;
+  padding: 0 1rem;
+  color: #666;
+  font-size: 0.9rem;
+  z-index: 1;
+}
+
+.social-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.facebook-login-btn {
+  width: 100%;
+  padding: 0;
+  border: 1px solid #dadce0;
+  border-radius: 4px;
+  background: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  box-shadow: 0 1px 2px 0 rgba(60, 64, 67, 0.30), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+}
+
+.facebook-login-btn:hover {
+  background: #f8f9fa;
+  border-color: #dadce0;
+  box-shadow: 0 1px 3px 0 rgba(60, 64, 67, 0.30), 0 4px 8px 3px rgba(60, 64, 67, 0.15);
+}
+
+.facebook-btn-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 0 1rem;
+  height: 44px;
+  color: #3c4043;
+  font-weight: 500;
+  font-size: 14px;
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  letter-spacing: 0.25px;
+}
+
+.facebook-icon-container {
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.facebook-btn-content svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Override Google button styles to match Facebook */
+.social-buttons > div:first-child {
+  width: 100% !important;
+}
+
+.social-buttons > div:first-child > div {
+  width: 100% !important;
+  height: 44px !important;
+  justify-content: center !important;
+  align-items: center !important;
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.25px !important;
+  padding: 0 1rem !important;
+  gap: 12px !important;
+}
+
+/* Google button icon styling */
+.social-buttons > div:first-child > div > div:first-child {
+  width: 18px !important;
+  height: 18px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.social-buttons > div:first-child > div > div:first-child img {
+  width: 18px !important;
+  height: 18px !important;
+}
+
+/* Ensure Google button text uses consistent font */
+.social-buttons > div:first-child > div > div:last-child,
+.social-buttons > div:first-child > div span {
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  color: #3c4043 !important;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .social-divider::before {
+    background: #333;
+  }
+  
+  .social-divider span {
+    background: #242424;
+    color: #ccc;
+  }
+  
+  .facebook-login-btn {
+    background: #2a2a2a;
+    border-color: #444;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.30), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
+  }
+  
+  .facebook-login-btn:hover {
+    background: #333;
+    border-color: #555;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.30), 0 4px 8px 3px rgba(0, 0, 0, 0.15);
+  }
+  
+  .facebook-btn-content {
+    color: #e8eaed;
+  }
+}

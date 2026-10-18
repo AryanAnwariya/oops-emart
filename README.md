@@ -11,7 +11,7 @@ A multi-role marketplace built for an Object-Oriented Programming course project
 | Auth | BCrypt password hashing, short-lived signed JWT (HS256), email OTP |
 | Database | H2 **in-memory** by default (PostgreSQL driver included but not wired up) |
 | Frontend | React 18, React Router 6, Vite 5, plain `fetch` |
-| Tests | JUnit 5, Mockito, Spring MockMvc (60 tests) |
+| Tests | JUnit 5, Mockito, Spring MockMvc (66 tests) |
 | Deploy | Multi-stage Dockerfile (Node build -> Maven build -> JRE), Render |
 
 ## Architecture
@@ -57,7 +57,7 @@ Open http://localhost:3000 . Run the tests with `cd backend && mvn clean verify`
 | `JWT_ISSUER`, `JWT_TTL` | no | default `emart`, `PT30M` |
 | `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM` | for real OTP emails | Gmail SMTP + app password |
 | `OTP_LOG_CODES` | no (`false`) | local-demo only |
-| `DEMO_SEED`, `DEMO_PASSWORD` | no (`false`) | opt-in demo accounts/products, **local demos only**; see below |
+| `DEMO_SEED`, `DEMO_PASSWORD` | no (off) | opt-in demo accounts/products for presentations (local or Render); see "Seeded demo data" |
 | `PORT` | no (`8080`) | HTTP port |
 | `H2_CONSOLE_ENABLED` | no (`false`) | H2 web console |
 | `VITE_ENABLE_GOOGLE_LOGIN` / `VITE_ENABLE_FACEBOOK_LOGIN` | no | build-time; social login is off unless `true` (and the server still rejects it) |
@@ -78,10 +78,12 @@ docker run -p 8080:8080 -e JWT_SECRET="$(openssl rand -base64 48)" emart
 6. Register a **Wholesaler** -> separate catalogue and dashboard (`/api/wholesaler/products`).
 7. Security moment: as a second retailer open the first retailer's product and press Save -> "You do not have permission".
 
-## Seeded demo data (local demos only)
-Optional and **off by default**. When `DEMO_SEED=true` the app creates demo accounts and products at startup, using the normal services (validation, BCrypt, ownership). It is idempotent, and since the database is in-memory it re-creates the data on every start.
-
-`DEMO_PASSWORD` (at least 8 characters) is required and is **never stored in this repository**: choose any throwaway value yourself, use it only locally, and never set `DEMO_SEED` on a public deployment. Without a password the app refuses to start.
+## Seeded demo data (local and Render presentations)
+Optional and **off by default**. When `DEMO_SEED=true` the app creates demo accounts and products during startup, **before the web server accepts requests**, using the normal services (validation, BCrypt hashing, ownership). Rules enforced in code and tests:
+- `DEMO_PASSWORD` (at least **12** characters) is required, is **never stored in this repository**, and is never logged. Without it the app refuses to start in demo mode.
+- It only creates. An existing account is never modified or re-passworded; if a demo email already exists with a different role or password, it is left untouched, a warning is logged, and no demo products are attached to it.
+- It is idempotent (accounts, and products per owner and name, are created only if missing), so a restart never duplicates data.
+- With the in-memory H2 database every start is empty, so the seeder recreates the demo data on each boot. **Anything created during the presentation is lost on restart**, and the demo data exists only while `DEMO_SEED=true`.
 
 | Role | Email | Products |
 |---|---|---|
@@ -96,7 +98,23 @@ export JWT_SECRET="$(openssl rand -base64 48)"
 export DEMO_SEED=true DEMO_PASSWORD="choose-a-local-only-password"
 java -jar target/backend-1.0.0.jar          # then: cd ../frontend && npm run dev
 ```
-Sign in at http://localhost:3000 with any email above and your `DEMO_PASSWORD`. Retailer 1's *Refill Stock* badge shows 2; log in as Retailer 2 and try to edit Retailer 1's product to show the 403 ownership check.
+### Render (presentation setup)
+In the Render dashboard -> your web service -> **Environment**, add:
+
+| Variable | Value | Notes |
+|---|---|---|
+| `JWT_SECRET` | output of `openssl rand -base64 48` | required for the app to start at all |
+| `DEMO_SEED` | `true` | the switch; must be exactly `true` |
+| `DEMO_PASSWORD` | a strong password you invent (>= 12 chars) | mark as secret; the same for all four accounts; do not reuse a real password |
+
+Save (Render redeploys). Wait for the deploy, open https://oops-emart.onrender.com and sign in with the emails above and your `DEMO_PASSWORD`. Check the service log for `DEMO MODE IS ON` and `Demo data ready` (the password is never printed).
+Free instances sleep when idle and the first request wakes them; the wake-up is a restart, and the seeder recreates the demo data automatically (open the site a few minutes before presenting).
+
+**Teardown after the presentation:** delete `DEMO_SEED` and `DEMO_PASSWORD` (or set `DEMO_SEED=false`) and let Render redeploy. Because the database is in memory, the demo accounts and products disappear with the restart; nothing remains to clean up. Optionally rotate `JWT_SECRET` to invalidate every issued token.
+
+**Risks while demo mode is on:** the four emails are public (they are in this README) and anyone who learns the password can act as those users; there is no login rate limiting. Use a long unique password, and keep demo mode on only as long as needed.
+
+Local sign-in: http://localhost:3000 with any email above and your `DEMO_PASSWORD`. Retailer 1's *Refill Stock* badge shows 2; log in as Retailer 2 and try to edit Retailer 1's product to show the 403 ownership check.
 
 ## API routes
 Base `/api`. "Public" needs no token; otherwise `Authorization: Bearer <token>`.

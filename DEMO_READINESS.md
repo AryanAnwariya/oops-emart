@@ -46,7 +46,7 @@ The datasource is `jdbc:h2:mem:emartDB`. **All users, products, images and OTPs 
 - [ ] `JWT_SECRET` set (and `MAIL_*` if you want real OTP emails; otherwise plan to show OTP from the log or skip OTP).
 - [ ] Gmail app password that was in git history revoked.
 - [ ] Open the live URL ~10 minutes early to wake the free instance; confirm `GET /` loads and `/api/products` answers.
-- [ ] Create demo data: either register users by hand, or start locally with `DEMO_SEED=true` + your own `DEMO_PASSWORD` (see README). Do not seed a public deployment.
+- [ ] Create demo data: set `DEMO_SEED=true` and your own strong `DEMO_PASSWORD` (>= 12 chars) in Render (README: "Seeded demo data"), or register users by hand. Remove both after the presentation.
 - [ ] Rehearse: customer browses → retailer adds/edits/deletes own stock → second retailer cannot change it (403 message) → expired/invalid token returns to login.
 - [ ] Do **not** demo Google/Facebook login (disabled by design) or low-stock filtering (not implemented).
 - [ ] Keep a local run ready as a fallback (see below).

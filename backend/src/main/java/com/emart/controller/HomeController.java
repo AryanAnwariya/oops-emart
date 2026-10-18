@@ -1,14 +1,15 @@
 package com.emart.controller;
-import java.util.*;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RestController;
 
-@RestController
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.GetMapping;
+
+@Controller
 public class HomeController {
 
-    @GetMapping("/")
-    public String welcomeScreen() {
-        return "Welcome to E-Mart!";
+    // Serve the React app (bundled into static/) and let react-router
+    // handle client-side routes on refresh / direct links.
+    @GetMapping({"/", "/products", "/login", "/create", "/retailer/**", "/wholesaler/**"})
+    public String spa() {
+        return "forward:/index.html";
     }
 }
-

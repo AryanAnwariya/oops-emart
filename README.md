@@ -11,7 +11,7 @@ A multi-role marketplace built for an Object-Oriented Programming course project
 | Auth | BCrypt password hashing, short-lived signed JWT (HS256), email OTP |
 | Database | H2 **in-memory** by default (PostgreSQL driver included but not wired up) |
 | Frontend | React 18, React Router 6, Vite 5, plain `fetch` |
-| Tests | JUnit 5, Mockito, Spring MockMvc (53+ tests) |
+| Tests | JUnit 5, Mockito, Spring MockMvc (60 tests) |
 | Deploy | Multi-stage Dockerfile (Node build -> Maven build -> JRE), Render |
 
 ## Architecture
@@ -57,6 +57,7 @@ Open http://localhost:3000 . Run the tests with `cd backend && mvn clean verify`
 | `JWT_ISSUER`, `JWT_TTL` | no | default `emart`, `PT30M` |
 | `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM` | for real OTP emails | Gmail SMTP + app password |
 | `OTP_LOG_CODES` | no (`false`) | local-demo only |
+| `DEMO_SEED`, `DEMO_PASSWORD` | no (`false`) | opt-in demo accounts/products, **local demos only**; see below |
 | `PORT` | no (`8080`) | HTTP port |
 | `H2_CONSOLE_ENABLED` | no (`false`) | H2 web console |
 | `VITE_ENABLE_GOOGLE_LOGIN` / `VITE_ENABLE_FACEBOOK_LOGIN` | no | build-time; social login is off unless `true` (and the server still rejects it) |
@@ -76,6 +77,26 @@ docker run -p 8080:8080 -e JWT_SECRET="$(openssl rand -base64 48)" emart
 5. Register a **Customer** -> *Products* page shows the retailer's catalogue (public read).
 6. Register a **Wholesaler** -> separate catalogue and dashboard (`/api/wholesaler/products`).
 7. Security moment: as a second retailer open the first retailer's product and press Save -> "You do not have permission".
+
+## Seeded demo data (local demos only)
+Optional and **off by default**. When `DEMO_SEED=true` the app creates demo accounts and products at startup, using the normal services (validation, BCrypt, ownership). It is idempotent, and since the database is in-memory it re-creates the data on every start.
+
+`DEMO_PASSWORD` (at least 8 characters) is required and is **never stored in this repository**: choose any throwaway value yourself, use it only locally, and never set `DEMO_SEED` on a public deployment. Without a password the app refuses to start.
+
+| Role | Email | Products |
+|---|---|---|
+| Customer | `demo.customer@demo.emart.test` | browses everything |
+| Retailer 1 | `demo.retailer1@demo.emart.test` | Alphonso Mango (40), Amul Butter (25), Basmati Rice 1kg (**8, low**), Toor Dal 1kg (**3, low**) |
+| Retailer 2 | `demo.retailer2@demo.emart.test` | Green Tea (15), A4 Notebook (**5, low**) |
+| Wholesaler | `demo.wholesaler@demo.emart.test` | Rice 25kg (200), Cooking Oil 15L (40), Sugar 50kg (**6, low**) |
+
+```bash
+cd backend && mvn clean package -DskipTests
+export JWT_SECRET="$(openssl rand -base64 48)"
+export DEMO_SEED=true DEMO_PASSWORD="choose-a-local-only-password"
+java -jar target/backend-1.0.0.jar          # then: cd ../frontend && npm run dev
+```
+Sign in at http://localhost:3000 with any email above and your `DEMO_PASSWORD`. Retailer 1's *Refill Stock* badge shows 2; log in as Retailer 2 and try to edit Retailer 1's product to show the 403 ownership check.
 
 ## API routes
 Base `/api`. "Public" needs no token; otherwise `Authorization: Bearer <token>`.

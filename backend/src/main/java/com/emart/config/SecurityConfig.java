@@ -1,5 +1,9 @@
 package com.emart.config;
 
+import com.emart.security.JsonSecurityErrorHandlers;
+import com.emart.security.JwtUserConverter;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -31,15 +35,42 @@ public class SecurityConfig {
      * Disables default security chain since we're using custom AuthService
      */
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtDecoder jwtDecoder,
+                                                   JwtUserConverter jwtUserConverter) throws Exception {
         http
-            .csrf(csrf -> csrf.disable()) // Disable CSRF for REST API
+            .csrf(csrf -> csrf.disable()) // Stateless bearer-token API: no cookies, so no CSRF surface
             .cors(cors -> cors.configurationSource(corsConfigurationSource())) // Enable CORS
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)) // Stateless sessions
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/**").permitAll() // Allow all API endpoints (custom auth handled in controllers)
-                .requestMatchers("/h2-console/**").permitAll() // Allow H2 console
-                .anyRequest().permitAll() // Allow all other requests
+                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                .requestMatchers("/api/auth/**").permitAll() // register, login, OTP, (disabled) social login
+
+                // Owner-scoped listings must be matched before the public GET rules below.
+                .requestMatchers("/api/products/mine").hasRole("RETAILER")
+                .requestMatchers("/api/wholesaler/products/mine").hasRole("WHOLESALER")
+
+                // Public browsing (read-only)
+                .requestMatchers(HttpMethod.GET, "/api/products", "/api/products/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/wholesaler/products", "/api/wholesaler/products/**").permitAll()
+
+                // Any write is role-restricted
+                .requestMatchers("/api/products/**").hasRole("RETAILER")
+                .requestMatchers("/api/wholesaler/products/**").hasRole("WHOLESALER")
+
+                .requestMatchers("/api/**").authenticated() // secure by default for any other API route
+
+                .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
+                .requestMatchers("/actuator/**").denyAll()
+                .anyRequest().permitAll() // SPA static files and client-side routes
+            )
+            .oauth2ResourceServer(oauth -> oauth
+                .jwt(jwt -> jwt.decoder(jwtDecoder).jwtAuthenticationConverter(jwtUserConverter))
+                .authenticationEntryPoint(JsonSecurityErrorHandlers.entryPoint())
+                .accessDeniedHandler(JsonSecurityErrorHandlers.accessDenied())
+            )
+            .exceptionHandling(ex -> ex
+                .authenticationEntryPoint(JsonSecurityErrorHandlers.entryPoint())
+                .accessDeniedHandler(JsonSecurityErrorHandlers.accessDenied())
             )
             .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin())); // Allow H2 console frames
 

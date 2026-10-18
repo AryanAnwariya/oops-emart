@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { apiFetch, clearSession } from '../api'
 import { useNavigate, Link } from 'react-router-dom'
 import '../App.css'
 
@@ -35,7 +36,7 @@ export default function RetailerDashboard() {
     setLoading(true)
     setError('')
     try {
-      const res = await fetch(`${API_BASE}/products`)
+      const res = await apiFetch(`${API_BASE}/products/mine`)
       if (res.status === 204) {
         // NO_CONTENT - no products found
         setProducts([])
@@ -72,9 +73,7 @@ export default function RetailerDashboard() {
   }
 
   const handleLogout = () => {
-    localStorage.removeItem('user')
-    localStorage.removeItem('email')
-    localStorage.removeItem('role')
+    clearSession()
     navigate('/login')
   }
 

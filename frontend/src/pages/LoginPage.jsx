@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import SocialLogin from '../components/SocialLogin'
+import { saveSession, peekAuthNotice, clearAuthNotice } from '../api'
 import './LoginPage.css'
 
 const API_BASE = '/api'
@@ -8,9 +9,12 @@ const API_BASE = '/api'
 export default function LoginPage() {
   const [mode, setMode] = useState('login') // 'login', 'register', 'otp'
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [error, setError] = useState(() => peekAuthNotice())
   const [success, setSuccess] = useState('')
   const navigate = useNavigate()
+
+  // the expiry notice is shown once, then forgotten
+  useEffect(() => { clearAuthNotice() }, [])
 
   // Login form state
   const [loginForm, setLoginForm] = useState({ email: '', password: '' })
@@ -67,9 +71,7 @@ export default function LoginPage() {
 
       const user = await res.json()
       // Store user info in localStorage
-      localStorage.setItem('user', JSON.stringify(user))
-      localStorage.setItem('email', user.email)
-      localStorage.setItem('role', user.role || 'CUSTOMER')
+      saveSession(user)
 
       setSuccess('Login successful! Redirecting...')
       // Redirect retailers to retailer dashboard, others to products page
@@ -128,9 +130,7 @@ export default function LoginPage() {
 
       const user = await res.json()
       // Auto-login after registration for better UX
-      localStorage.setItem('user', JSON.stringify(user))
-      localStorage.setItem('email', user.email)
-      localStorage.setItem('role', user.role || 'CUSTOMER')
+      saveSession(user)
       setSuccess('Registration successful! Redirecting...')
       // Redirect based on role
       if (user.role === 'RETAILER') {
@@ -205,9 +205,7 @@ export default function LoginPage() {
       // Check if user was logged in (existing user)
       if (result.id && result.email && result.role) {
         // User exists and is now logged in
-        localStorage.setItem('user', JSON.stringify(result))
-        localStorage.setItem('email', result.email)
-        localStorage.setItem('role', result.role || 'CUSTOMER')
+        saveSession(result)
 
         setSuccess('Login successful! Redirecting...')
 
@@ -255,11 +253,14 @@ export default function LoginPage() {
         })
       })
 
+      if (loginRes.status === 501) {
+        const body = await loginRes.json().catch(() => ({}))
+        throw new Error(body.error || 'Social login is not available')
+      }
+
       if (loginRes.ok) {
         const user = await loginRes.json()
-        localStorage.setItem('user', JSON.stringify(user))
-        localStorage.setItem('email', user.email)
-        localStorage.setItem('role', user.role || 'CUSTOMER')
+        saveSession(user)
 
         setSuccess('Google login successful! Redirecting...')
         if (user.role === 'RETAILER') {
@@ -287,9 +288,7 @@ export default function LoginPage() {
 
         if (registerRes.ok) {
           const user = await registerRes.json()
-          localStorage.setItem('user', JSON.stringify(user))
-          localStorage.setItem('email', user.email)
-          localStorage.setItem('role', user.role || 'CUSTOMER')
+          saveSession(user)
           setSuccess('Account created with Google! Redirecting...')
           setTimeout(() => navigate('/products'), 1500)
         } else {
@@ -322,11 +321,14 @@ export default function LoginPage() {
         })
       })
 
+      if (loginRes.status === 501) {
+        const body = await loginRes.json().catch(() => ({}))
+        throw new Error(body.error || 'Social login is not available')
+      }
+
       if (loginRes.ok) {
         const user = await loginRes.json()
-        localStorage.setItem('user', JSON.stringify(user))
-        localStorage.setItem('email', user.email)
-        localStorage.setItem('role', user.role || 'CUSTOMER')
+        saveSession(user)
 
         setSuccess('Facebook login successful! Redirecting...')
         if (user.role === 'RETAILER') {
@@ -354,9 +356,7 @@ export default function LoginPage() {
 
         if (registerRes.ok) {
           const user = await registerRes.json()
-          localStorage.setItem('user', JSON.stringify(user))
-          localStorage.setItem('email', user.email)
-          localStorage.setItem('role', user.role || 'CUSTOMER')
+          saveSession(user)
           setSuccess('Account created with Facebook! Redirecting...')
           setTimeout(() => navigate('/products'), 1500)
         } else {

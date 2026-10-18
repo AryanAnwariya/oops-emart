@@ -6,6 +6,5 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface WholesalerProductRepo extends JpaRepository<WholesalerProduct, String> {
-    
+    java.util.List<WholesalerProduct> findByOwnerId(Integer ownerId);
 }
-

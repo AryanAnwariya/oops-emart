@@ -1,5 +1,7 @@
 package com.emart.controller;
 
+import com.emart.security.TokenService;
+
 import com.emart.model.User;
 import com.emart.model.SocialUser;
 import com.emart.dto.RegisterRequest;
@@ -27,6 +29,9 @@ public class AuthController {
     
     @Autowired
     private UserRepo userRepo;
+
+    @Autowired
+    private TokenService tokenService;
 
     // -------------------------------------------------------------------
     // I. REGISTRATION ENDPOINT (MULTI-ROLE)
@@ -81,7 +86,7 @@ public class AuthController {
                 registeredUser.getEmail(),
                 registeredUser.getRole(),
                 registeredUser.getLocation()
-            );
+            ).withToken(tokenService.issue(registeredUser));
             // HTTP 201 Created status for successful registration
             return ResponseEntity.status(HttpStatus.CREATED).body(responseDTO);
         } catch (RuntimeException e) {
@@ -114,8 +119,8 @@ public class AuthController {
                     authenticatedUser.getEmail(),
                     authenticatedUser.getRole(),
                     authenticatedUser.getLocation()
-                );
-                // SUCCESS: Return the user object (JWT generation should happen here)
+                ).withToken(tokenService.issue(authenticatedUser));
+                // SUCCESS: user profile plus a short-lived signed access token
                 return ResponseEntity.ok(responseDTO); 
             } else {
                 // UNAUTHORIZED status for invalid credentials
@@ -152,7 +157,8 @@ public class AuthController {
     public ResponseEntity<?> verifyOtp(@RequestParam String email, @RequestParam String code) {
         try {
             if (authService.verifyOtp(email, code)) {
-                // Check if user exists
+                // Check if user exists (emails are stored lower-case)
+                email = AuthService.normalizeEmail(email);
                 Optional<User> existingUser = userRepo.findByEmail(email);
                 
                 if (existingUser.isPresent()) {
@@ -163,7 +169,7 @@ public class AuthController {
                         user.getEmail(),
                         user.getRole(),
                         user.getLocation()
-                    );
+                    ).withToken(tokenService.issue(user));
                     return ResponseEntity.ok(responseDTO);
                 } else {
                     // User doesn't exist - return verification success for registration
@@ -188,8 +194,18 @@ public class AuthController {
     // IV. SOCIAL LOGIN ENDPOINT (OAUTH)
     // -------------------------------------------------------------------
     
+    // SECURITY: this endpoint receives an email/name chosen by the client and never
+    // checks a Google/Facebook token, so anyone could log in as any registered email.
+    // It stays disabled until the server verifies the provider's ID token itself.
+    private static final boolean SOCIAL_TOKEN_VERIFICATION_IMPLEMENTED = false;
+
     @PostMapping("/social-login")
     public ResponseEntity<?> socialLogin(@RequestBody SocialUser socialUser) {
+        if (!SOCIAL_TOKEN_VERIFICATION_IMPLEMENTED) {
+            Map<String, Object> disabled = new HashMap<>();
+            disabled.put("error", "Social login is not available. Please sign in with email and password or OTP.");
+            return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).body(disabled);
+        }
         try {
             // NOTE: Frontend must have validated the social token and sent the structured profile data (SocialUser).
             User user = authService.socialLogin(socialUser);

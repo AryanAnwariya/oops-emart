@@ -1,79 +1,94 @@
 package com.emart.service;
-import com.emart.model.Product;
-import com.emart.repository.ProductRepo;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-import java.util.*;
+
 import java.io.IOException;
+import java.util.List;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.emart.exception.ResourceNotFoundException;
+import com.emart.model.Product;
+import com.emart.repository.ProductRepo;
+
+/**
+ * Retailer catalogue. Ownership always comes from the authenticated principal passed in by the controller;
+ * nothing in the request body can set the id or the owner.
+ */
 @Service
 public class ProductService {
-
     @Autowired
     private ProductRepo repo;
-    // private List<Product> products = new ArrayList<>();
 
-    // public ProductService() {
-    //     products.add(new Product(1, "Apple", 100, 10));
-    //     products.add(new Product(2, "Banana", 200, 20));
-    //     products.add(new Product(3, "Orange", 300, 30));
-    // }
-
-    public List<Product> getAllProducts() throws Exception {
-        // Return list directly; an empty list is a valid response and should not cause a 500
-        List<Product> products = repo.findAll();
-        return products;
+    public List<Product> getAllProducts() {
+        return repo.findAll();
     }
-    
-    public Product getProductById(String id) throws Exception {
+
+    public List<Product> getProductsOwnedBy(Integer ownerId) {
+        return repo.findByOwnerId(ownerId);
+    }
+
+    public Product getProductById(String id) {
         if (id == null) {
-            throw new Exception("Invalid id");
+            throw new IllegalArgumentException("Invalid id");
         }
-        Product product = repo.findById(id).orElse(null);
-        if (product == null) {
-            throw new Exception("Product not found");
-        }
-        return product;
+        return repo.findById(id).orElseThrow(() -> new ResourceNotFoundException("Product not found"));
     }
-    
-    public void addProduct(Product product, MultipartFile imageFile) throws IOException {
-        if (imageFile != null) {
+
+    public void addProduct(Product product, MultipartFile imageFile, Integer ownerId) throws IOException {
+        validate(product);
+        product.setId(null); // a client-chosen id would make save() overwrite someone else's row
+        product.setOwnerId(ownerId);
+        if (imageFile != null && !imageFile.isEmpty()) {
             product.setImageName(imageFile.getOriginalFilename());
             product.setImageType(imageFile.getContentType());
             product.setImageData(imageFile.getBytes());
         }
         repo.save(product);
     }
-    public void updateProduct(String id, Product product, MultipartFile imageFile) throws IOException, Exception {
-        if (id == null || product == null) {
-            throw new Exception("Invalid id or product");
-        }
-        Product existingProduct = repo.findById(id).orElse(null);
-        if (existingProduct == null) {
-            throw new Exception("Product not found");
-        }
-        existingProduct.setName(product.getName());
-        existingProduct.setDescription(product.getDescription());
-        existingProduct.setCategory(product.getCategory());
-        existingProduct.setPrice(product.getPrice());
-        existingProduct.setQuantity(product.getQuantity());
+
+    public void updateProduct(String id, Product product, MultipartFile imageFile, Integer callerId) throws IOException {
+        validate(product);
+        Product existing = getOwnedProduct(id, callerId);
+        existing.setName(product.getName());
+        existing.setDescription(product.getDescription());
+        existing.setCategory(product.getCategory());
+        existing.setPrice(product.getPrice());
+        existing.setQuantity(product.getQuantity());
         // Update image only if a new one is provided
         if (imageFile != null && !imageFile.isEmpty()) {
-            existingProduct.setImageName(imageFile.getOriginalFilename());
-            existingProduct.setImageType(imageFile.getContentType());
-            existingProduct.setImageData(imageFile.getBytes());
+            existing.setImageName(imageFile.getOriginalFilename());
+            existing.setImageType(imageFile.getContentType());
+            existing.setImageData(imageFile.getBytes());
         }
-        repo.save(existingProduct);
-    }   
-    
-    public void deleteProduct(String id) throws Exception {
-        if (id == null) {
-            throw new Exception("Invalid id");
+        repo.save(existing);
+    }
+
+    public void deleteProduct(String id, Integer callerId) {
+        repo.delete(getOwnedProduct(id, callerId));
+    }
+
+    private Product getOwnedProduct(String id, Integer callerId) {
+        Product existing = getProductById(id);
+        if (callerId == null || !callerId.equals(existing.getOwnerId())) {
+            throw new AccessDeniedException("Not the owner of this product");
         }
-        if (!repo.existsById(id)) {
-            throw new Exception("Product not found");
+        return existing;
+    }
+
+    private static void validate(Product p) {
+        if (p == null) {
+            throw new IllegalArgumentException("Product is required");
         }
-        repo.deleteById(id);
+        if (p.getName() == null || p.getName().isBlank()) {
+            throw new IllegalArgumentException("Product name is required");
+        }
+        if (p.getPrice() < 0 || Double.isNaN(p.getPrice())) {
+            throw new IllegalArgumentException("Price must not be negative");
+        }
+        if (p.getQuantity() < 0) {
+            throw new IllegalArgumentException("Quantity must not be negative");
+        }
     }
 }

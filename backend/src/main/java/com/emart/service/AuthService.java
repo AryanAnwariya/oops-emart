@@ -20,7 +20,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
-import java.util.Random;
+import java.security.SecureRandom;
 
 @Service
 public class AuthService {
@@ -36,6 +36,20 @@ public class AuthService {
     // --- Security Encoder Injected for Password Hashing ---
     @Autowired private BCryptPasswordEncoder passwordEncoder; 
 
+    /** Trim and lower-case an email so register, login and OTP all agree. Returns null if blank. */
+    private static final int MAX_OTP_ATTEMPTS = 5;
+
+    /** Local-demo escape hatch only; see sendOtp. */
+    @org.springframework.beans.factory.annotation.Value("${app.otp.log-codes:false}")
+    private boolean logOtpCodes;
+
+    public static String normalizeEmail(String email) {
+        if (email == null || email.trim().isEmpty()) {
+            return null;
+        }
+        return email.trim().toLowerCase();
+    }
+
     // -------------------------------------------------------------------
     // I. REGISTRATION AND PASSWORD LOGIN
     // -------------------------------------------------------------------
@@ -43,6 +57,21 @@ public class AuthService {
     @Transactional
     public User registerUser(User newUser, Customer customerDetails, Retailer retailerDetails, Wholesaler wholesalerDetails) {
         
+        // 0. Validation: normalise email, require a password, allow only known roles
+        String email = normalizeEmail(newUser.getEmail());
+        if (email == null) {
+            throw new RuntimeException("Email is required.");
+        }
+        if (newUser.getPassword() == null || newUser.getPassword().isEmpty()) {
+            throw new RuntimeException("Password is required.");
+        }
+        String requestedRole = newUser.getRole() == null ? "" : newUser.getRole().trim().toUpperCase();
+        if (!requestedRole.equals("CUSTOMER") && !requestedRole.equals("RETAILER") && !requestedRole.equals("WHOLESALER")) {
+            throw new RuntimeException("Invalid role. Must be CUSTOMER, RETAILER or WHOLESALER.");
+        }
+        newUser.setEmail(email);
+        newUser.setRole(requestedRole);
+
         // 1. Validation: Check for existing email
         if (userRepo.findByEmail(newUser.getEmail()).isPresent()) {
             throw new RuntimeException("Email already in use.");
@@ -72,7 +101,11 @@ public class AuthService {
     }
     
     public User login(String email, String rawPassword) {
-        Optional<User> userOpt = userRepo.findByEmail(email);
+        String normalizedEmail = normalizeEmail(email);
+        if (normalizedEmail == null || rawPassword == null) {
+            return null;
+        }
+        Optional<User> userOpt = userRepo.findByEmail(normalizedEmail);
 
         if (userOpt.isPresent()) {
             User user = userOpt.get();
@@ -97,7 +130,7 @@ public class AuthService {
         
         try {
             // 1. Generate a random 6-digit code
-            Random random = new Random();
+            SecureRandom random = new SecureRandom();
             int otpNumber = random.nextInt(900000) + 100000; // Ensures 6-digit number (100000-999999)
             String code = String.format("%06d", otpNumber);
             
@@ -110,20 +143,19 @@ public class AuthService {
             // 3. Save OTP to database
             otpRepo.save(otp);
             
-            // 4. Send OTP via email
+            // 4. Send OTP via email. If delivery fails the code is useless to the user, so discard it and
+            //    report the failure instead of claiming success. For local demos without SMTP only,
+            //    OTP_LOG_CODES=true prints the code to the console (never enable in production).
             try {
                 emailService.sendOtpEmail(email.trim().toLowerCase(), code);
-                System.out.println("OTP sent successfully to email: " + email);
             } catch (Exception emailError) {
-                System.err.println("Failed to send email, falling back to console output");
-                System.err.println("Email error: " + emailError.getMessage());
-                
-                // Fallback: Print to console if email fails
-                System.out.println("========================================");
-                System.out.println("DEBUG: OTP Generated for " + email);
-                System.out.println("OTP Code: " + code);
-                System.out.println("Valid for: 5 minutes");
-                System.out.println("========================================");
+                System.err.println("Failed to send OTP email: " + emailError.getMessage());
+                if (logOtpCodes) {
+                    System.out.println("DEBUG (OTP_LOG_CODES=true) OTP for " + email.trim().toLowerCase() + ": " + code);
+                } else {
+                    otpRepo.deleteByEmail(email.trim().toLowerCase());
+                    throw new RuntimeException("Could not send the verification email. Please try again later.", emailError);
+                }
             }
         } catch (Exception e) {
             System.err.println("Error generating OTP: " + e.getMessage());
@@ -134,7 +166,11 @@ public class AuthService {
     
     @Transactional
     public boolean verifyOtp(String email, String code) {
-        // 1. Retrieve the latest OTP
+        // 1. Retrieve the latest OTP (emails are stored lower-case by sendOtp)
+        email = normalizeEmail(email);
+        if (email == null || code == null) {
+            return false;
+        }
         Optional<OTP> otpOpt = otpRepo.findTopByEmailOrderByExpirationTimeDesc(email);
 
         if (otpOpt.isPresent()) {
@@ -144,6 +180,17 @@ public class AuthService {
                 // 3. Verification successful: Delete all related OTPs for security cleanup
                 otpRepo.deleteByEmail(email); 
                 return true;
+            }
+            // 4. Wrong code on a live OTP: count it, and burn the OTP after too many guesses
+            //    (a 6-digit code is otherwise brute-forceable, and a correct code now yields a token).
+            if (otp.getExpirationTime().isAfter(LocalDateTime.now())) {
+                int attempts = (otp.getFailedAttempts() == null ? 0 : otp.getFailedAttempts()) + 1;
+                if (attempts >= MAX_OTP_ATTEMPTS) {
+                    otpRepo.deleteByEmail(email);
+                } else {
+                    otp.setFailedAttempts(attempts);
+                    otpRepo.save(otp);
+                }
             }
         }
         return false;

@@ -1,165 +1,131 @@
-# E-Mart Project
+# E-Mart
 
-A full-stack e-commerce application with Spring Boot backend and React frontend.
+A multi-role marketplace built for an Object-Oriented Programming course project (CSF213). **Customers** browse products, **retailers** manage a retail catalogue, and **wholesalers** manage a separate wholesale catalogue. Spring Boot REST API + React single-page app, served together from one Docker image.
 
-## Project Structure
+> Course project, not a production system. See [Known limitations](#known-limitations) and [DEMO_READINESS.md](DEMO_READINESS.md).
 
+## Tech stack
+| Layer | Technology |
+|---|---|
+| Backend | Java 21, Spring Boot 3.2 (Web, Data JPA, Security, OAuth2 Resource Server, Validation, Mail, Actuator) |
+| Auth | BCrypt password hashing, short-lived signed JWT (HS256), email OTP |
+| Database | H2 **in-memory** by default (PostgreSQL driver included but not wired up) |
+| Frontend | React 18, React Router 6, Vite 5, plain `fetch` |
+| Tests | JUnit 5, Mockito, Spring MockMvc (53+ tests) |
+| Deploy | Multi-stage Dockerfile (Node build -> Maven build -> JRE), Render |
+
+## Architecture
 ```
-OOPS-emart/
-├── backend/          # Spring Boot Backend
-├── frontend/         # React Frontend
-└── README.md
+React SPA (src/App.jsx, pages/*)
+   │  fetch + "Authorization: Bearer <token>"      (src/api.js)
+   ▼
+Spring Security filter chain      config/SecurityConfig, security/*   -> 401 / 403, role rules
+   ▼
+Controllers   (HTTP only)         controller/*   Auth, Product, WholesalerProduct, Home (SPA forwarding)
+   ▼
+Services      (business rules)    service/*      AuthService, ProductService, WholesalerProductService, EmailService
+   ▼
+Repositories  (Spring Data JPA)   repository/*
+   ▼
+Entities / DTOs                   model/*, dto/*   -> H2
 ```
+The built React app is copied into `src/main/resources/static`, so one Spring Boot process serves both the UI and `/api`.
 
-## Quick Start
-
-### Backend Setup
+## Run it locally
+Requirements: JDK 21+, Maven 3.9+, Node 18+. No database to install (H2 in memory).
 
 ```bash
-# Navigate to backend directory
+# 1) Backend (port 8080). JWT_SECRET is mandatory: >= 32 random bytes.
 cd backend
+export JWT_SECRET="$(openssl rand -base64 48)"
+export OTP_LOG_CODES=true          # local demo only: prints OTP codes to the console if SMTP is not configured
+mvn clean package
+java -jar target/backend-1.0.0.jar
 
-# Install Java 17 and Maven
-sudo apt install openjdk-21-jdk maven
-
-# Build the project
-mvn clean install
-
-# Run the application
-mvn spring-boot:run
-```
-
-Backend will be available at: http://localhost:8080
-
-### Frontend Setup
-
-```bash
-# Navigate to frontend directory
+# 2) Frontend dev server (port 3000, proxies /api to :8080)
 cd frontend
-
-# Install Node.js and npm (if not installed)
-curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-sudo apt-get install -y nodejs
-
-# Install dependencies
-npm install
-
-# Run the development server
+npm ci
 npm run dev
 ```
+Open http://localhost:3000 . Run the tests with `cd backend && mvn clean verify` and build the UI with `cd frontend && npm run build`.
+(On JDK 24 the pom passes `-Dnet.bytebuddy.experimental=true` to the test JVM because Boot 3.2's Mockito predates JDK 24.)
 
-Frontend will be available at: http://localhost:3000
+### Environment variables
+| Variable | Required | Purpose |
+|---|---|---|
+| `JWT_SECRET` | yes | token signing key (app will not start without it) |
+| `JWT_ISSUER`, `JWT_TTL` | no | default `emart`, `PT30M` |
+| `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM` | for real OTP emails | Gmail SMTP + app password |
+| `OTP_LOG_CODES` | no (`false`) | local-demo only |
+| `PORT` | no (`8080`) | HTTP port |
+| `H2_CONSOLE_ENABLED` | no (`false`) | H2 web console |
+| `VITE_ENABLE_GOOGLE_LOGIN` / `VITE_ENABLE_FACEBOOK_LOGIN` | no | build-time; social login is off unless `true` (and the server still rejects it) |
 
-## Development
-
-### Backend
-- **Port**: 8080
-- **Database**: PostgreSQL (localhost:5432)
-- **API Base**: http://localhost:8080/api
-
-### Frontend
-- **Port**: 3000
-- **Build Tool**: Vite
-- **Framework**: React 18
-
-## Prerequisites
-
-- Java 17+
-- Maven 3.6+
-- Node.js 18+
-- PostgreSQL
-
-## Installation Commands
-
-### Install Java 21
+### Docker
 ```bash
-sudo apt update
-sudo apt install openjdk-21-jdk
-java -version
+docker build -t emart .
+docker run -p 8080:8080 -e JWT_SECRET="$(openssl rand -base64 48)" emart
 ```
+(The Dockerfile has not been built in the author's environment; Docker was unavailable.)
 
-### Install Maven
-```bash
-sudo apt install maven
-mvn -version
-```
+## Demo script (email/password path)
+1. Register a **Retailer** (Create Account -> role Retailer) -> lands on the Retailer Dashboard.
+2. *Add New Product* (name, price, quantity, optional image) -> appears on the dashboard.
+3. Open the product -> *Edit* / *Delete*; or *Edit Stock* page -> click a row to edit price/quantity.
+4. Set a quantity below 10 -> the **Refill Stock** badge counts it and the *Low on Stock* page lists it (filter runs in the browser over `GET /api/products/mine`).
+5. Register a **Customer** -> *Products* page shows the retailer's catalogue (public read).
+6. Register a **Wholesaler** -> separate catalogue and dashboard (`/api/wholesaler/products`).
+7. Security moment: as a second retailer open the first retailer's product and press Save -> "You do not have permission".
 
-### Install Node.js and npm
-```bash
-curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-sudo apt-get install -y nodejs
-node -v
-npm -v
-```
+## API routes
+Base `/api`. "Public" needs no token; otherwise `Authorization: Bearer <token>`.
 
-### Install PostgreSQL
-```bash
-sudo apt install postgresql postgresql-contrib
-sudo systemctl start postgresql
-sudo systemctl enable postgresql
-```
+| Method & path | Access | Notes |
+|---|---|---|
+| `POST /auth/register` | public | JSON: email, password, role (`CUSTOMER`/`RETAILER`/`WHOLESALER`), location, plus `customerDetails` / `retailerDetails` / `wholesalerDetails`. Returns user + `token`, `expiresIn` |
+| `POST /auth/login` | public | email, password -> user + token (401 on bad credentials) |
+| `POST /auth/send-otp?email=` | public | emails a 6-digit code (5 min) |
+| `POST /auth/verify-otp?email=&code=` | public | existing user -> logged in (token); new email -> `{verified:true}`; code burned after 5 wrong guesses |
+| `POST /auth/social-login` | public | **disabled**, always 501 |
+| `GET /products`, `GET /products/{id}`, `GET /products/{id}/image` | public | retail catalogue |
+| `GET /products/mine` | RETAILER | only the caller's products |
+| `POST /products` (multipart: `product` JSON + optional `imageFile`) | RETAILER | owner = caller |
+| `PUT /products/update/{id}`, `DELETE /products/delete/{id}` | RETAILER, owner only | 403 if not owner, 404 if missing |
+| `GET/POST/PUT/DELETE /wholesaler/products/...` | same pattern; writes and `/mine` need WHOLESALER | wholesale catalogue |
+| `GET /actuator/health` | public | other actuator endpoints are denied |
 
-### Setup PostgreSQL Database
-```bash
-sudo -u postgres psql
-CREATE DATABASE emart;
-CREATE USER emart_user WITH PASSWORD 'emart_password';
-GRANT ALL PRIVILEGES ON DATABASE emart TO emart_user;
-\q
-```
+## Database design
+Entities (JPA, `ddl-auto=update`):
+- **User** (`users`): id, email (unique in practice, stored lower-case), BCrypt `password`, `role`, location.
+- **Customer / Retailer / Wholesaler**: role-specific profile, each with a `@OneToOne` -> `User` (`user_id`). Customer: name, phone, address. Retailer: name, shopName, location. Wholesaler: name, businessId, contact.
+- **Product** (retail) and **WholesalerProduct**: UUID id, name, description, category, price, quantity, image (name, type, `@Lob` bytes), `owner_id` (user id of the owner; never exposed in JSON).
+- **CustomerProduct**: entity exists but has no API (unused).
+- **OTP**: email, code, expiry, failed attempts.
 
-## Features
+There is no foreign key from `owner_id` to `users` (it is a plain integer); there are no order/cart tables.
 
-- **Multi-role Authentication**: Customer, Retailer, Wholesaler roles
-- **Social Login**: Google and Facebook OAuth integration
-- **Product Management**: CRUD operations for products
-- **Image Upload**: Product image support
-- **Role-based Dashboards**: Different interfaces for different user types
-- **OTP Verification**: Email-based OTP authentication
+## Object-oriented design (what is really in the code)
+- **Encapsulation:** entities and DTOs keep fields `private` behind getters/setters; `UserResponseDTO` exists so the password hash is never serialised; `Product.ownerId` is `@JsonIgnore` so clients cannot read or set it.
+- **Abstraction / layering:** controller -> service -> repository. Controllers only translate HTTP; business rules (validation, ownership, OTP limits) live in services; persistence is hidden behind Spring Data interfaces (`ProductRepo extends JpaRepository<Product,String>` – no SQL written).
+- **Composition:** a `Retailer` *has a* `User` (`@OneToOne`) instead of subclassing it; profile data is composed with the account.
+- **Polymorphism (interface-based):** Spring injects interface implementations (`JpaRepository`, `WebMvcConfigurer`, `Converter<Jwt, AbstractAuthenticationToken>` implemented by `JwtUserConverter`); `AuthenticatedUser` is a Java `record`.
+- **Dependency injection / inversion of control:** services and controllers get collaborators via Spring (`@Autowired`, constructor injection in `TokenService`/`JwtUserConverter`).
+- **Exceptions as control flow for errors:** `ResourceNotFoundException` -> 404 via `ProductExceptionHandler`; Spring's `AccessDeniedException` -> 403.
+- **Honest gaps:** there is **no entity inheritance** – `Product`, `WholesalerProduct` and `CustomerProduct` are near-identical classes, and the two product services/controllers are copies. A `@MappedSuperclass` base class plus a generic service would remove the duplication (listed as the main refactoring).
 
-## Social Login Setup
+## Security model
+Passwords are BCrypt-hashed. Login returns a 30-minute HS256 JWT (`sub` = user id, `role`, `iss`, `exp`). On every protected request Spring Security verifies signature, expiry and issuer, then re-loads the user and rejects the token if the user is gone or the role changed. Roles are enforced in `SecurityConfig`; product ownership is enforced in the services using the principal, never client-supplied ids. See [AUTH_MIGRATION.md](AUTH_MIGRATION.md).
 
-The application supports Google and Facebook social login. To set up:
+## Screenshots
+No UI screenshots are committed (the files in `images/` are sample product photos). To add them: run the app, capture login, retailer dashboard, low-stock page and customer product list, save under `docs/screenshots/` and link them here.
 
-1. Copy `frontend/.env.example` to `frontend/.env`
-2. Configure your OAuth credentials:
-   ```
-   VITE_GOOGLE_CLIENT_ID=your-google-client-id
-   VITE_FACEBOOK_APP_ID=your-facebook-app-id
-   ```
-3. Follow the detailed setup guide in `SOCIAL_LOGIN_SETUP.md`
-
-## API Documentation
-
-- Health Check: http://localhost:8080/actuator/health
-- Actuator: http://localhost:8080/actuator
-- Auth Endpoints: http://localhost:8080/api/auth/*
-
-## Build Commands
-
-### Build Backend
-```bash
-cd backend
-mvn clean package
-```
-
-### Build Frontend
-```bash
-cd frontend
-npm run build
-```
-
-## Run Production
-
-### Backend
-```bash
-cd backend
-java -jar target/backend-1.0.0.jar
-```
-
-### Frontend
-```bash
-cd frontend
-npm run preview
-```
-
+## Known limitations
+- **Data is lost on every restart** (H2 in memory) – re-create demo accounts before presenting.
+- Google/Facebook login is intentionally disabled (needs server-side provider-token verification).
+- No rate limiting on login/OTP sending; JWT stored in `localStorage`; no refresh tokens or server-side logout.
+- The Gmail app password that was committed earlier is still in git history and must be revoked.
+- Low-stock filtering is client-side (`quantity < 10`); no cart, orders or payments.
+- Legacy products without an owner are read-only until an owner is assigned.
+- Images are stored in the database and sent base64-encoded in list responses.
+- Wholesale catalogue is publicly readable.
+- `npm audit` reports vulnerabilities in dev/prod dependencies (axios is unused; react-router upgrade advisable).

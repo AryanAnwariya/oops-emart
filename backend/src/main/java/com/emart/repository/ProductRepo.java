@@ -6,5 +6,5 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface ProductRepo extends JpaRepository<Product, String> {
-    
+    java.util.List<Product> findByOwnerId(Integer ownerId);
 }

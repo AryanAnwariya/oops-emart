@@ -1,4 +1,6 @@
 package com.emart.model;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.GeneratedValue;
@@ -23,6 +25,11 @@ public class WholesalerProduct {
     private String imageType;
     @Lob
     private byte[] imageData;
+
+    /** Owning user id. Set only by the server from the authenticated principal; never read from or written to JSON. */
+    @JsonIgnore
+    @jakarta.persistence.Column(name = "owner_id")
+    private Integer ownerId;
 
     public WholesalerProduct() {}
 
@@ -105,6 +112,14 @@ public class WholesalerProduct {
     
     public void setQuantity(int quantity) {
         this.quantity = quantity;
+    }
+
+    public Integer getOwnerId() {
+        return ownerId;
+    }
+
+    public void setOwnerId(Integer ownerId) {
+        this.ownerId = ownerId;
     }
 }
 

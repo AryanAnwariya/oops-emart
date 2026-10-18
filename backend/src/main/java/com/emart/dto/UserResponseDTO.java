@@ -1,10 +1,13 @@
 package com.emart.dto;
 
+@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
 public class UserResponseDTO {
     private Integer id;
     private String email;
     private String role;
     private String location;
+    private String token;      // signed access token (only on register/login/OTP-login)
+    private Long expiresIn;    // token lifetime in seconds
 
     public UserResponseDTO() {}
 
@@ -26,5 +29,14 @@ public class UserResponseDTO {
 
     public String getLocation() { return location; }
     public void setLocation(String location) { this.location = location; }
+
+    public String getToken() { return token; }
+    public Long getExpiresIn() { return expiresIn; }
+
+    public UserResponseDTO withToken(com.emart.security.TokenService.IssuedToken issued) {
+        this.token = issued.token();
+        this.expiresIn = issued.expiresInSeconds();
+        return this;
+    }
 }
 

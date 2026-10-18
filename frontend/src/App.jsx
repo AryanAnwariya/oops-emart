@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useCallback } from 'react'
+import { apiFetch, clearSession, FORBIDDEN_MESSAGE } from './api'
 import { BrowserRouter, Routes, Route, Link, useNavigate, useParams } from 'react-router-dom'
 import './App.css'
 import LoginPage from './pages/LoginPage'
@@ -94,9 +95,7 @@ function ProductsPage() {
   }, [apiBase])
 
   const handleLogout = () => {
-    localStorage.removeItem('user')
-    localStorage.removeItem('email')
-    localStorage.removeItem('role')
+    clearSession()
     setUser(null)
     navigate('/login')
   }
@@ -245,7 +244,7 @@ function CreatePage() {
         ? `${apiBase}/wholesaler/products`
         : `${apiBase}/products`
 
-      const res = await fetch(endpoint, {
+      const res = await apiFetch(endpoint, {
         method: 'POST',
         body: formData,
       })
@@ -267,6 +266,10 @@ function CreatePage() {
       }
       if (res.status === 500) {
         setError('Server error. Please try again later.')
+        return
+      }
+      if (res.status === 403) {
+        setError(FORBIDDEN_MESSAGE)
         return
       }
       if (!res.ok) {
@@ -461,7 +464,7 @@ function ProductDetailPage() {
         formData.append('imageFile', imageFile)
       }
 
-      const res = await fetch(`${apiBase}/products/update/${id}`, {
+      const res = await apiFetch(`${apiBase}/products/update/${id}`, {
         method: 'PUT',
         body: formData,
       })
@@ -479,6 +482,10 @@ function ProductDetailPage() {
       }
       if (res.status === 500) {
         setError('Server error. Please try again later.')
+        return
+      }
+      if (res.status === 403) {
+        setError(FORBIDDEN_MESSAGE)
         return
       }
       if (!res.ok) {
@@ -503,7 +510,7 @@ function ProductDetailPage() {
     setLoading(true)
     setError('')
     try {
-      const res = await fetch(`${apiBase}/products/delete/${id}`, {
+      const res = await apiFetch(`${apiBase}/products/delete/${id}`, {
         method: 'DELETE',
       })
 
@@ -518,6 +525,10 @@ function ProductDetailPage() {
       }
       if (res.status === 500) {
         setError('Server error. Please try again later.')
+        return
+      }
+      if (res.status === 403) {
+        setError(FORBIDDEN_MESSAGE)
         return
       }
       if (!res.ok) {
@@ -724,7 +735,7 @@ function LowStockPage() {
     setLoading(true)
     setError('')
     try {
-      const res = await fetch(`${apiBase}/products`)
+      const res = await apiFetch(`${apiBase}/products/mine`)
       if (res.status === 204) {
         setProducts([])
         return
@@ -855,10 +866,10 @@ function EditPage() {
     try {
       // Use different endpoint based on user role
       const endpoint = user?.role === 'WHOLESALER' 
-        ? `${apiBase}/wholesaler/products`
-        : `${apiBase}/products`
+        ? `${apiBase}/wholesaler/products/mine`
+        : `${apiBase}/products/mine`
       
-      const res = await fetch(endpoint)
+      const res = await apiFetch(endpoint)
       if (res.status === 204) {
         // NO_CONTENT - no products found
         setProducts([])
@@ -896,21 +907,24 @@ function EditPage() {
     setLoading(true)
     setError('')
     try {
-      const body = {
-        id: String(form.id),
+      const existing = products.find((p) => String(p.id) === String(form.id)) || {}
+      const productData = {
         name: form.name,
+        description: existing.description,
+        category: existing.category,
         price: Number(form.price) || 0,
         quantity: Number(form.quantity) || 0,
       }
+      const formData = new FormData()
+      formData.append('product', new Blob([JSON.stringify(productData)], { type: 'application/json' }))
       // Use different endpoint based on user role
       const updateEndpoint = user?.role === 'WHOLESALER' 
         ? `${apiBase}/wholesaler/products/update/${form.id}`
         : `${apiBase}/products/update/${form.id}`
       
-      const res = await fetch(updateEndpoint, {
+      const res = await apiFetch(updateEndpoint, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: formData,
       })
       
       if (res.status === 200) {
@@ -925,6 +939,10 @@ function EditPage() {
       }
       if (res.status === 500) {
         setError('Server error. Please try again later.')
+        return
+      }
+      if (res.status === 403) {
+        setError(FORBIDDEN_MESSAGE)
         return
       }
       if (!res.ok) {
@@ -953,7 +971,7 @@ function EditPage() {
         ? `${apiBase}/wholesaler/products/delete/${id}`
         : `${apiBase}/products/delete/${id}`
       
-      const res = await fetch(deleteEndpoint, { method: 'DELETE' })
+      const res = await apiFetch(deleteEndpoint, { method: 'DELETE' })
       
       if (res.status === 200) {
         // OK - success
@@ -966,6 +984,10 @@ function EditPage() {
       }
       if (res.status === 500) {
         setError('Server error. Please try again later.')
+        return
+      }
+      if (res.status === 403) {
+        setError(FORBIDDEN_MESSAGE)
         return
       }
       if (!res.ok) {
@@ -998,7 +1020,7 @@ function EditPage() {
             <div className="form">
               <div className="row">
                 <label>Product ID</label>
-                <input name="id" type="number" value={form.id} onChange={(e) => setForm({ ...form, id: e.target.value })} placeholder="e.g. 3" />
+                <input name="id" type="text" value={form.id} onChange={(e) => setForm({ ...form, id: e.target.value })} placeholder="Click a product on the right to select it" />
               </div>
               <div className="row">
                 <label>New Name</label>
@@ -1032,13 +1054,19 @@ function EditPage() {
                   <div className="empty">No products found</div>
                 )}
                 {products.map((p) => (
-                  <div className="tr" key={p.id}>
+                  <div
+                    className="tr"
+                    key={p.id}
+                    style={{ cursor: 'pointer' }}
+                    title="Click to edit this product"
+                    onClick={() => setForm({ id: String(p.id), name: p.name || '', price: String(p.price ?? ''), quantity: String(p.quantity ?? '') })}
+                  >
                     <div>{p.id}</div>
                     <div>{p.name}</div>
                     <div>{p.price}</div>
                     <div>{p.quantity}</div>
                     <div className="row-actions">
-                      <button className="btn small danger" onClick={() => deleteProduct(p.id)} disabled={loading}>Delete</button>
+                      <button className="btn small danger" onClick={(e) => { e.stopPropagation(); deleteProduct(p.id) }} disabled={loading}>Delete</button>
                     </div>
                   </div>
                 ))}

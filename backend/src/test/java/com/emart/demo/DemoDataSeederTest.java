@@ -67,8 +67,8 @@ class DemoDataSeederTest {
         long users = userRepo.count();
         long products = productRepo.count();
         long wholesale = wholesalerRepo.count();
-        seeder.run(null);
-        seeder.run(null);
+        seeder.seed();
+        seeder.seed();
         assertEquals(users, userRepo.count());
         assertEquals(products, productRepo.count());
         assertEquals(wholesale, wholesalerRepo.count());
@@ -87,8 +87,15 @@ class DemoDataSeederTest {
     }
 
     @Test
+    void seeding_happensBeforeTheWebServerAcceptsRequests() {
+        // SmartInitializingSingleton callbacks run before the embedded server's connectors start, so nobody can
+        // register a demo email (account squatting) in the window between "server up" and "seed done".
+        assertInstanceOf(org.springframework.beans.factory.SmartInitializingSingleton.class, seeder);
+    }
+
+    @Test
     void blankPassword_failsFast_insteadOfCreatingWeakAccounts() {
-        DemoDataSeeder s = new DemoDataSeeder(null, null, null, null);
-        assertThrows(IllegalStateException.class, () -> s.run(null));
+        DemoDataSeeder s = new DemoDataSeeder(null, null, null, null, null);
+        assertThrows(IllegalStateException.class, s::seed);
     }
 }

@@ -53,13 +53,13 @@ class AuthServiceTest {
         when(userRepo.findByEmail("shop@example.com")).thenReturn(Optional.empty());
         when(userRepo.save(any(User.class))).thenAnswer(i -> i.getArgument(0));
 
-        User saved = service.registerUser(newUser("  Shop@Example.COM ", "pw12345", " retailer "),
+        User saved = service.registerUser(newUser("  Shop@Example.COM ", "pw123456", " retailer "),
                 null, new Retailer(), null);
 
         assertEquals("shop@example.com", saved.getEmail());
         assertEquals("RETAILER", saved.getRole());
-        assertNotEquals("pw12345", saved.getPassword(), "password must not be stored in plain text");
-        assertTrue(passwordEncoder.matches("pw12345", saved.getPassword()));
+        assertNotEquals("pw123456", saved.getPassword(), "password must not be stored in plain text");
+        assertTrue(passwordEncoder.matches("pw123456", saved.getPassword()));
         verify(retailerRepo).save(any(Retailer.class));
         verifyNoInteractions(customerRepo, wholesalerRepo);
     }
@@ -69,8 +69,8 @@ class AuthServiceTest {
         when(userRepo.findByEmail(any())).thenReturn(Optional.empty());
         when(userRepo.save(any(User.class))).thenAnswer(i -> i.getArgument(0));
 
-        service.registerUser(newUser("c@example.com", "pw", "CUSTOMER"), new Customer(), null, null);
-        service.registerUser(newUser("w@example.com", "pw", "WHOLESALER"), null, null, new Wholesaler());
+        service.registerUser(newUser("c@example.com", "pw123456", "CUSTOMER"), new Customer(), null, null);
+        service.registerUser(newUser("w@example.com", "pw123456", "WHOLESALER"), null, null, new Wholesaler());
 
         verify(customerRepo).save(any(Customer.class));
         verify(wholesalerRepo).save(any(Wholesaler.class));
@@ -79,16 +79,16 @@ class AuthServiceTest {
     @Test
     void register_rejectsUnknownRole_andSavesNothing() {
         assertThrows(RuntimeException.class,
-                () -> service.registerUser(newUser("x@example.com", "pw", "ADMIN"), null, null, null));
+                () -> service.registerUser(newUser("x@example.com", "pw123456", "ADMIN"), null, null, null));
         assertThrows(RuntimeException.class,
-                () -> service.registerUser(newUser("x@example.com", "pw", null), null, null, null));
+                () -> service.registerUser(newUser("x@example.com", "pw123456", null), null, null, null));
         verify(userRepo, never()).save(any());
     }
 
     @Test
     void register_rejectsBlankEmailAndEmptyPassword() {
         assertThrows(RuntimeException.class,
-                () -> service.registerUser(newUser("   ", "pw", "CUSTOMER"), null, null, null));
+                () -> service.registerUser(newUser("   ", "pw123456", "CUSTOMER"), null, null, null));
         assertThrows(RuntimeException.class,
                 () -> service.registerUser(newUser("a@example.com", "", "CUSTOMER"), null, null, null));
         assertThrows(RuntimeException.class,
@@ -100,9 +100,33 @@ class AuthServiceTest {
     void register_duplicateEmailIsDetectedAfterNormalization() {
         when(userRepo.findByEmail("dup@example.com")).thenReturn(Optional.of(new User()));
         RuntimeException e = assertThrows(RuntimeException.class,
-                () -> service.registerUser(newUser("DUP@example.com ", "pw", "CUSTOMER"), null, null, null));
+                () -> service.registerUser(newUser("DUP@example.com ", "pw123456", "CUSTOMER"), null, null, null));
         assertEquals("Email already in use.", e.getMessage());
         verify(userRepo, never()).save(any());
+    }
+
+
+    @Test
+    void register_enforcesPasswordLengthAndEmailFormat() {
+        IllegalArgumentException shortPw = assertThrows(IllegalArgumentException.class,
+                () -> service.registerUser(newUser("a@example.com", "short77", "CUSTOMER"), null, null, null));
+        assertTrue(shortPw.getMessage().contains("8"));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.registerUser(newUser("a@example.com", "x".repeat(73), "CUSTOMER"), null, null, null),
+                "BCrypt ignores everything after 72 bytes, so longer passwords are refused");
+        assertThrows(IllegalArgumentException.class,
+                () -> service.registerUser(newUser("not-an-email", "long-enough-1", "CUSTOMER"), null, null, null));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.registerUser(newUser("a@b", "long-enough-1", "CUSTOMER"), null, null, null));
+        verify(userRepo, never()).save(any());
+    }
+
+    @Test
+    void register_validationFailuresAreIllegalArgumentExceptions_soTheControllerCanTellThemFromBugs() {
+        assertThrows(IllegalArgumentException.class,
+                () -> service.registerUser(newUser("x@example.com", "pw123456", "ADMIN"), null, null, null));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.registerUser(newUser("   ", "pw123456", "CUSTOMER"), null, null, null));
     }
 
     // ---------- login ----------

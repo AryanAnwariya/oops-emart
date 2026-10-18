@@ -92,7 +92,7 @@ cd ../frontend && npm ci && npm run dev                                       # 
 
 **Functional**
 - Data is non-persistent (section 3).
-- Low-stock is client-side only; no customer cart/orders in the backend (a `CustomerProduct` entity exists but has no controller).
+- Low-stock is client-side only; no cart, checkout or orders.
 - Large images are stored in the database (5 MB limit) and returned inline as base64 in list responses (slow with many images).
 - ESLint has no config in the repo, so `npm run lint` cannot run.
 - After login a wholesaler lands on `/products` (not its dashboard) while a retailer lands on the dashboard; cosmetic.

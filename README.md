@@ -2,6 +2,8 @@
 
 A multi-role marketplace built for an Object-Oriented Programming course project (CSF213). **Customers** browse products, **retailers** manage a retail catalogue, and **wholesalers** manage a separate wholesale catalogue. Spring Boot REST API + React single-page app, served together from one Docker image.
 
+> Full architecture, API reference, security model, demo checklist and interview Q&A: **[EMART_COMPLETE_GUIDE.md](EMART_COMPLETE_GUIDE.md)**.
+>
 > Course project, not a production system. See [Known limitations](#known-limitations) and [DEMO_READINESS.md](DEMO_READINESS.md).
 
 ## Tech stack
@@ -11,7 +13,7 @@ A multi-role marketplace built for an Object-Oriented Programming course project
 | Auth | BCrypt password hashing, short-lived signed JWT (HS256), email OTP |
 | Database | H2 **in-memory** by default (PostgreSQL driver included but not wired up) |
 | Frontend | React 18, React Router 6, Vite 5, plain `fetch` |
-| Tests | JUnit 5, Mockito, Spring MockMvc (66 tests) |
+| Tests | JUnit 5, Mockito, Spring MockMvc (91 tests) |
 | Deploy | Multi-stage Dockerfile (Node build -> Maven build -> JRE), Render |
 
 ## Architecture
@@ -138,7 +140,6 @@ Entities (JPA, `ddl-auto=update`):
 - **User** (`users`): id, email (unique in practice, stored lower-case), BCrypt `password`, `role`, location.
 - **Customer / Retailer / Wholesaler**: role-specific profile, each with a `@OneToOne` -> `User` (`user_id`). Customer: name, phone, address. Retailer: name, shopName, location. Wholesaler: name, businessId, contact.
 - **Product** (retail) and **WholesalerProduct**: UUID id, name, description, category, price, quantity, image (name, type, `@Lob` bytes), `owner_id` (user id of the owner; never exposed in JSON).
-- **CustomerProduct**: entity exists but has no API (unused).
 - **OTP**: email, code, expiry, failed attempts.
 
 There is no foreign key from `owner_id` to `users` (it is a plain integer); there are no order/cart tables.
@@ -150,7 +151,7 @@ There is no foreign key from `owner_id` to `users` (it is a plain integer); ther
 - **Polymorphism (interface-based):** Spring injects interface implementations (`JpaRepository`, `WebMvcConfigurer`, `Converter<Jwt, AbstractAuthenticationToken>` implemented by `JwtUserConverter`); `AuthenticatedUser` is a Java `record`.
 - **Dependency injection / inversion of control:** services and controllers get collaborators via Spring (`@Autowired`, constructor injection in `TokenService`/`JwtUserConverter`).
 - **Exceptions as control flow for errors:** `ResourceNotFoundException` -> 404 via `ProductExceptionHandler`; Spring's `AccessDeniedException` -> 403.
-- **Honest gaps:** there is **no entity inheritance** – `Product`, `WholesalerProduct` and `CustomerProduct` are near-identical classes, and the two product services/controllers are copies. A `@MappedSuperclass` base class plus a generic service would remove the duplication (listed as the main refactoring).
+- **Honest gaps:** there is **no entity inheritance** – `Product` and `WholesalerProduct` are near-identical classes, and the two product services/controllers are copies. A `@MappedSuperclass` base class plus a generic service would remove the duplication (listed as the main refactoring).
 
 ## Security model
 Passwords are BCrypt-hashed. Login returns a 30-minute HS256 JWT (`sub` = user id, `role`, `iss`, `exp`). On every protected request Spring Security verifies signature, expiry and issuer, then re-loads the user and rejects the token if the user is gone or the role changed. Roles are enforced in `SecurityConfig`; product ownership is enforced in the services using the principal, never client-supplied ids. See [AUTH_MIGRATION.md](AUTH_MIGRATION.md).
@@ -163,6 +164,7 @@ No UI screenshots are committed (the files in `images/` are sample product photo
 - Google/Facebook login is intentionally disabled (needs server-side provider-token verification).
 - No rate limiting on login/OTP sending; JWT stored in `localStorage`; no refresh tokens or server-side logout.
 - The Gmail app password that was committed earlier is still in git history and must be revoked.
+- Login is rate-limited (5 failures per 10 minutes per e-mail); registration and OTP sending are not.
 - Low-stock filtering is client-side (`quantity < 10`); no cart, orders or payments.
 - Legacy products without an owner are read-only until an owner is assigned.
 - Images are stored in the database and sent base64-encoded in list responses.

@@ -471,10 +471,11 @@ export default function LoginPage() {
                   className="form-input"
                   value={registerForm.password}
                   onChange={(e) => setRegisterForm({ ...registerForm, password: e.target.value })}
-                  placeholder="At least 4 characters"
+                  placeholder="At least 8 characters"
                   autoComplete="new-password"
                   required
-                  minLength={4}
+                  minLength={8}
+                  maxLength={72}
                 />
               </div>
               <div className="form-group">

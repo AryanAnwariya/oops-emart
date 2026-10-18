@@ -13,6 +13,8 @@ import jakarta.mail.internet.MimeMessage;
 @Service
 public class EmailService {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(EmailService.class);
+
     @Autowired
     private JavaMailSender mailSender;
 
@@ -38,11 +40,10 @@ public class EmailService {
             helper.setText(htmlContent, true);
 
             mailSender.send(message);
-            System.out.println("OTP email sent successfully to: " + toEmail);
+            log.info("OTP email sent successfully to: {}", toEmail);
 
         } catch (Exception e) {
-            System.err.println("Failed to send OTP email to: " + toEmail);
-            e.printStackTrace();
+            log.error("Failed to send OTP email to: {}", toEmail, e);
             throw new RuntimeException("Failed to send OTP email: " + e.getMessage(), e);
         }
     }
@@ -59,11 +60,10 @@ public class EmailService {
             message.setText(buildSimpleOtpMessage(otpCode));
 
             mailSender.send(message);
-            System.out.println("Simple OTP email sent successfully to: " + toEmail);
+            log.info("Simple OTP email sent successfully to: {}", toEmail);
 
         } catch (Exception e) {
-            System.err.println("Failed to send simple OTP email to: " + toEmail);
-            e.printStackTrace();
+            log.error("Failed to send simple OTP email to: {}", toEmail, e);
             throw new RuntimeException("Failed to send OTP email: " + e.getMessage(), e);
         }
     }

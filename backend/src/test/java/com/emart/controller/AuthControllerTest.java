@@ -30,6 +30,7 @@ class AuthControllerTest {
     @Mock AuthService authService;
     @Mock UserRepo userRepo;
     @Mock com.emart.security.TokenService tokenService;
+    @Mock com.emart.security.LoginAttemptService loginAttempts;
     @InjectMocks AuthController controller;
     MockMvc mvc;
 
@@ -52,7 +53,7 @@ class AuthControllerTest {
     @Test
     void register_invalidRoleReturns400WithMessage() throws Exception {
         when(authService.registerUser(any(), any(), any(), any()))
-                .thenThrow(new RuntimeException("Invalid role. Must be CUSTOMER, RETAILER or WHOLESALER."));
+                .thenThrow(new IllegalArgumentException("Invalid role. Must be CUSTOMER, RETAILER or WHOLESALER."));
         mvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"a@b.com\",\"password\":\"pw\",\"role\":\"ADMIN\"}"))
@@ -96,5 +97,51 @@ class AuthControllerTest {
         when(authService.verifyOtp(any(), any())).thenReturn(false);
         mvc.perform(post("/api/auth/verify-otp").param("email", "a@b.com").param("code", "000000"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void unexpectedFailures_returnAGenericMessage_neverTheExceptionText() throws Exception {
+        String secret = "jdbc:h2:mem:emartDB constraint SYS_CT_10092 violated";
+        when(authService.login(any(), any())).thenThrow(new RuntimeException(secret));
+        when(authService.registerUser(any(), any(), any(), any())).thenThrow(new RuntimeException(secret));
+        org.mockito.Mockito.doThrow(new RuntimeException(secret)).when(authService).sendOtp(any());
+        when(authService.verifyOtp(any(), any())).thenThrow(new RuntimeException(secret));
+
+        for (var req : java.util.List.of(
+                post("/api/auth/login").contentType(MediaType.APPLICATION_JSON).content("{\"email\":\"a@b.com\",\"password\":\"x\"}"),
+                post("/api/auth/register").contentType(MediaType.APPLICATION_JSON).content("{\"email\":\"a@b.com\",\"password\":\"x\",\"role\":\"CUSTOMER\"}"),
+                post("/api/auth/send-otp").param("email", "a@b.com"),
+                post("/api/auth/verify-otp").param("email", "a@b.com").param("code", "123456"))) {
+            String body = mvc.perform(req).andExpect(status().isInternalServerError())
+                    .andReturn().getResponse().getContentAsString();
+            org.junit.jupiter.api.Assertions.assertFalse(body.contains("jdbc") || body.contains("SYS_CT"), "leaked: " + body);
+            org.junit.jupiter.api.Assertions.assertTrue(body.contains("error"));
+        }
+    }
+
+    @Test
+    void login_whenTheAccountIsLocked_returns429WithRetryAfter_andNeverChecksThePassword() throws Exception {
+        when(loginAttempts.isBlocked("a@b.com")).thenReturn(true);
+        when(loginAttempts.retryAfter("a@b.com")).thenReturn(java.time.Duration.ofMinutes(7));
+        mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\" A@B.com \",\"password\":\"x\"}"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Retry-After", "420"));
+        verify(authService, never()).login(any(), any());
+    }
+
+    @Test
+    void login_recordsFailures_andResetsOnSuccess() throws Exception {
+        when(authService.login("a@b.com", "bad")).thenReturn(null);
+        mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"email\":\"a@b.com\",\"password\":\"bad\"}")).andExpect(status().isUnauthorized());
+        verify(loginAttempts).recordFailure("a@b.com");
+
+        User u = new User("a@b.com", "HASH", "RETAILER", "");
+        u.setId(7);
+        when(authService.login("a@b.com", "good")).thenReturn(u);
+        mvc.perform(post("/api/auth/login").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"email\":\"a@b.com\",\"password\":\"good\"}")).andExpect(status().isOk());
+        verify(loginAttempts).reset("a@b.com");
     }
 }

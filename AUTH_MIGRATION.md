@@ -52,3 +52,14 @@ UPDATE wholesaler_product SET owner_id = <wholesaler users.id> WHERE owner_id IS
 - `AuthService.sendOtp` prints the OTP to the console if email sending fails – remove before production use.
 - `frontend/.env` is tracked in git; it holds public client IDs only, but should be untracked.
 - Build on JDK 24 needs `-Dnet.bytebuddy.experimental=true` for Mockito (set in the surefire config); the Docker image targets 21.
+
+## Input rules added later (behaviour changes to be aware of)
+- Registration now requires a valid e-mail format and a password of 8-72 characters. Existing accounts are unaffected; only new
+  registrations are checked. The frontend hint and `minLength` were updated to match.
+- Product name (<= 100), description (<= 255), category (<= 100) and finite non-negative price are validated (HTTP 400 instead of a server error).
+- Uploaded images must really be PNG, JPEG, GIF or WebP (detected from the file's bytes); SVG/HTML are rejected. The stored content type is the
+  detected one, not the client's claim. Images already stored are unchanged.
+- Login is limited to 5 failures per e-mail per 10 minutes (HTTP 429, in memory).
+- Removed unused code: `CustomerProduct` entity/repository (its table, if it exists in a persistent database, is simply no longer used),
+  `WebConfig` and the controllers' `@CrossOrigin` (duplicated the CORS rules in `SecurityConfig`), `application.yml` (duplicated
+  `application.properties`), and the unused `axios` npm dependency.

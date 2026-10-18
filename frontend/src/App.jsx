@@ -181,7 +181,7 @@ function ProductFields({ form, errors, onChange, imageFile, onImageChange, image
       </div>
       <div className="row">
         <label htmlFor={id('image')}>Product image {currentImageUrl ? '(leave empty to keep the current one)' : '(optional)'}</label>
-        <input id={id('image')} type="file" accept="image/*" onChange={onImageChange} className="file-input" />
+        <input id={id('image')} type="file" accept="image/png,image/jpeg,image/gif,image/webp" onChange={onImageChange} className="file-input" />
         {imagePreview ? (
           <div className="image-preview-container">
             <img src={imagePreview} alt="Selected product preview" className="image-preview" />
@@ -192,7 +192,7 @@ function ProductFields({ form, errors, onChange, imageFile, onImageChange, image
             <p className="hint">Current image</p>
           </div>
         ) : null}
-        {imageFile && <span className="hint">{imageFile.name}</span>}
+        {imageFile ? <span className="hint">{imageFile.name}</span> : <span className="hint">PNG, JPEG, GIF or WebP, up to 5 MB.</span>}
       </div>
     </>
   )

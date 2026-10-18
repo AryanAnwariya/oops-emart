@@ -8,7 +8,7 @@ public class HomeController {
 
     // Serve the React app (bundled into static/) and let react-router
     // handle client-side routes on refresh / direct links.
-    @GetMapping({"/", "/products", "/login", "/create", "/retailer/**", "/wholesaler/**"})
+    @GetMapping({"/", "/products", "/login", "/create", "/edit", "/product/**", "/retailer/**", "/wholesaler/**"})
     public String spa() {
         return "forward:/index.html";
     }

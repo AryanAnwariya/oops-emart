@@ -1,3 +1,5 @@
+> **Status: social login is currently disabled.** The server endpoint `POST /api/auth/social-login` returns 501 because it does not yet verify the provider's ID token on the server (without that, anyone could sign in as any e-mail). The buttons stay hidden unless `VITE_ENABLE_GOOGLE_LOGIN` / `VITE_ENABLE_FACEBOOK_LOGIN` are `true`. The setup steps below describe the provider consoles only; do not enable it until server-side verification exists. See EMART_COMPLETE_GUIDE.md.
+
 # Social Login Setup Guide
 
 This guide will help you set up Google and Facebook social login for your e-commerce application.

@@ -1,6 +1,9 @@
 package com.emart.controller;
 
+import com.emart.security.LoginAttemptService;
 import com.emart.security.TokenService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.emart.model.User;
 import com.emart.model.SocialUser;
@@ -29,6 +32,11 @@ public class AuthController {
     
     @Autowired
     private UserRepo userRepo;
+
+    @Autowired
+    private LoginAttemptService loginAttempts;
+
+    private static final Logger log = LoggerFactory.getLogger(AuthController.class);
 
     @Autowired
     private TokenService tokenService;
@@ -89,16 +97,15 @@ public class AuthController {
             ).withToken(tokenService.issue(registeredUser));
             // HTTP 201 Created status for successful registration
             return ResponseEntity.status(HttpStatus.CREATED).body(responseDTO);
-        } catch (RuntimeException e) {
-            // Return 400 Bad Request for validation errors (e.g., "Email already in use.")
-            e.printStackTrace(); // Log for debugging
+        } catch (IllegalArgumentException e) {
+            // Validation problems (bad e-mail/password/role, duplicate e-mail): the message is safe to show
             Map<String, Object> error = new HashMap<>();
             error.put("error", e.getMessage());
             return ResponseEntity.badRequest().body(error);
         } catch (Exception e) {
-            e.printStackTrace(); // Log for debugging
+            log.error("Unexpected error while handling an authentication request", e);
             Map<String, Object> error = new HashMap<>();
-            error.put("error", "Registration failed: " + e.getMessage());
+            error.put("error", "Registration failed. Please try again later.");
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
         }
     }
@@ -110,7 +117,23 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest request) {
         try {
+            String attemptKey = AuthService.normalizeEmail(request.getEmail());
+            if (attemptKey != null && loginAttempts.isBlocked(attemptKey)) {
+                long seconds = Math.max(1, loginAttempts.retryAfter(attemptKey).toSeconds());
+                Map<String, Object> locked = new HashMap<>();
+                locked.put("error", "Too many failed sign-in attempts. Please try again in "
+                        + ((seconds + 59) / 60) + " minute(s).");
+                return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                        .header("Retry-After", String.valueOf(seconds)).body(locked);
+            }
             User authenticatedUser = authService.login(request.getEmail(), request.getPassword());
+            if (attemptKey != null) {
+                if (authenticatedUser == null) {
+                    loginAttempts.recordFailure(attemptKey);
+                } else {
+                    loginAttempts.reset(attemptKey);
+                }
+            }
 
             if (authenticatedUser != null) {
                 // Convert to DTO (exclude password for security)
@@ -129,9 +152,9 @@ public class AuthController {
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(error);
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("Unexpected error while handling an authentication request", e);
             Map<String, Object> error = new HashMap<>();
-            error.put("error", "Login failed: " + e.getMessage());
+            error.put("error", "Sign-in failed. Please try again later.");
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
         }
     }
@@ -145,10 +168,14 @@ public class AuthController {
         try {
             authService.sendOtp(email);
             return ResponseEntity.ok("OTP sent successfully to " + email);
-        } catch (Exception e) {
-            e.printStackTrace(); // Log the error for debugging
+        } catch (IllegalArgumentException e) {
             Map<String, Object> error = new HashMap<>();
-            error.put("error", "Failed to send OTP: " + e.getMessage());
+            error.put("error", e.getMessage());
+            return ResponseEntity.badRequest().body(error);
+        } catch (Exception e) {
+            log.error("Unexpected error while handling an authentication request", e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("error", "Could not send the verification email. Please try again later.");
             return ResponseEntity.internalServerError().body(error);
         }
     }
@@ -183,9 +210,9 @@ public class AuthController {
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Invalid or expired OTP.");
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("Unexpected error while handling an authentication request", e);
             Map<String, Object> error = new HashMap<>();
-            error.put("error", "OTP verification failed: " + e.getMessage());
+            error.put("error", "Verification failed. Please try again later.");
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
         }
     }
@@ -221,9 +248,9 @@ public class AuthController {
             // SUCCESS: Return the authenticated user profile.
             return ResponseEntity.ok(responseDTO);
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("Unexpected error while handling an authentication request", e);
             Map<String, Object> error = new HashMap<>();
-            error.put("error", "Social login failed: " + e.getMessage());
+            error.put("error", "Social login is not available.");
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
         }
     }

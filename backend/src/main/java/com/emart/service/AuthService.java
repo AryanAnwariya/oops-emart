@@ -38,6 +38,10 @@ public class AuthService {
 
     /** Trim and lower-case an email so register, login and OTP all agree. Returns null if blank. */
     private static final int MAX_OTP_ATTEMPTS = 5;
+    static final int MIN_PASSWORD_LENGTH = 8;
+    static final int MAX_PASSWORD_BYTES = 72;
+    private static final java.util.regex.Pattern EMAIL_PATTERN = java.util.regex.Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AuthService.class);
 
     /** Local-demo escape hatch only; see sendOtp. */
     @org.springframework.beans.factory.annotation.Value("${app.otp.log-codes:false}")
@@ -60,21 +64,31 @@ public class AuthService {
         // 0. Validation: normalise email, require a password, allow only known roles
         String email = normalizeEmail(newUser.getEmail());
         if (email == null) {
-            throw new RuntimeException("Email is required.");
+            throw new IllegalArgumentException("Email is required.");
         }
         if (newUser.getPassword() == null || newUser.getPassword().isEmpty()) {
-            throw new RuntimeException("Password is required.");
+            throw new IllegalArgumentException("Password is required.");
+        }
+        if (newUser.getPassword().length() < MIN_PASSWORD_LENGTH) {
+            throw new IllegalArgumentException("Password must be at least " + MIN_PASSWORD_LENGTH + " characters.");
+        }
+        if (newUser.getPassword().getBytes(java.nio.charset.StandardCharsets.UTF_8).length > MAX_PASSWORD_BYTES) {
+            // BCrypt silently ignores everything after 72 bytes, so refuse rather than store a weaker password
+            throw new IllegalArgumentException("Password must be at most " + MAX_PASSWORD_BYTES + " characters.");
         }
         String requestedRole = newUser.getRole() == null ? "" : newUser.getRole().trim().toUpperCase();
         if (!requestedRole.equals("CUSTOMER") && !requestedRole.equals("RETAILER") && !requestedRole.equals("WHOLESALER")) {
-            throw new RuntimeException("Invalid role. Must be CUSTOMER, RETAILER or WHOLESALER.");
+            throw new IllegalArgumentException("Invalid role. Must be CUSTOMER, RETAILER or WHOLESALER.");
+        }
+        if (email.length() > 254 || !EMAIL_PATTERN.matcher(email).matches()) {
+            throw new IllegalArgumentException("Please enter a valid email address.");
         }
         newUser.setEmail(email);
         newUser.setRole(requestedRole);
 
         // 1. Validation: Check for existing email
         if (userRepo.findByEmail(newUser.getEmail()).isPresent()) {
-            throw new RuntimeException("Email already in use.");
+            throw new IllegalArgumentException("Email already in use.");
         }
         
         // 2. SECURITY: Hash the password before saving
@@ -149,7 +163,7 @@ public class AuthService {
             try {
                 emailService.sendOtpEmail(email.trim().toLowerCase(), code);
             } catch (Exception emailError) {
-                System.err.println("Failed to send OTP email: " + emailError.getMessage());
+                log.warn("Failed to send OTP email: {}", emailError.getMessage());
                 if (logOtpCodes) {
                     System.out.println("DEBUG (OTP_LOG_CODES=true) OTP for " + email.trim().toLowerCase() + ": " + code);
                 } else {
@@ -158,8 +172,7 @@ public class AuthService {
                 }
             }
         } catch (Exception e) {
-            System.err.println("Error generating OTP: " + e.getMessage());
-            e.printStackTrace();
+            log.error("Error generating OTP", e);
             throw new RuntimeException("Failed to generate OTP: " + e.getMessage(), e);
         }
     }

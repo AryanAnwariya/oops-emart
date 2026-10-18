@@ -152,7 +152,8 @@ public class AuthController {
     public ResponseEntity<?> verifyOtp(@RequestParam String email, @RequestParam String code) {
         try {
             if (authService.verifyOtp(email, code)) {
-                // Check if user exists
+                // Check if user exists (emails are stored lower-case)
+                email = AuthService.normalizeEmail(email);
                 Optional<User> existingUser = userRepo.findByEmail(email);
                 
                 if (existingUser.isPresent()) {
@@ -188,8 +189,18 @@ public class AuthController {
     // IV. SOCIAL LOGIN ENDPOINT (OAUTH)
     // -------------------------------------------------------------------
     
+    // SECURITY: this endpoint receives an email/name chosen by the client and never
+    // checks a Google/Facebook token, so anyone could log in as any registered email.
+    // It stays disabled until the server verifies the provider's ID token itself.
+    private static final boolean SOCIAL_TOKEN_VERIFICATION_IMPLEMENTED = false;
+
     @PostMapping("/social-login")
     public ResponseEntity<?> socialLogin(@RequestBody SocialUser socialUser) {
+        if (!SOCIAL_TOKEN_VERIFICATION_IMPLEMENTED) {
+            Map<String, Object> disabled = new HashMap<>();
+            disabled.put("error", "Social login is not available. Please sign in with email and password or OTP.");
+            return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).body(disabled);
+        }
         try {
             // NOTE: Frontend must have validated the social token and sent the structured profile data (SocialUser).
             User user = authService.socialLogin(socialUser);

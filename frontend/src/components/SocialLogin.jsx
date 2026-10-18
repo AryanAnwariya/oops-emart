@@ -1,5 +1,6 @@
 import { GoogleLogin } from '@react-oauth/google'
 import FacebookLogin from 'react-facebook-login-lite'
+import { googleEnabled, facebookEnabled, facebookAppId, anySocialEnabled } from '../config/oauth'
 
 const SocialLogin = ({ onGoogleSuccess, onFacebookSuccess, onError }) => {
   const handleGoogleSuccess = (credentialResponse) => {
@@ -53,6 +54,9 @@ const SocialLogin = ({ onGoogleSuccess, onFacebookSuccess, onError }) => {
     onError('Facebook login failed')
   }
 
+  // Nothing configured: render nothing (no divider, no dead buttons).
+  if (!anySocialEnabled) return null
+
   return (
     <div className="social-login">
       <div className="social-divider">
@@ -60,6 +64,7 @@ const SocialLogin = ({ onGoogleSuccess, onFacebookSuccess, onError }) => {
       </div>
       
       <div className="social-buttons">
+        {googleEnabled && (
         <GoogleLogin
           onSuccess={handleGoogleSuccess}
           onError={handleGoogleError}
@@ -69,9 +74,11 @@ const SocialLogin = ({ onGoogleSuccess, onFacebookSuccess, onError }) => {
           shape="rectangular"
           width="100%"
         />
+        )}
         
+        {facebookEnabled && (
         <FacebookLogin
-          appId={import.meta.env.VITE_FACEBOOK_APP_ID || "your-facebook-app-id"}
+          appId={facebookAppId}
           onSuccess={handleFacebookSuccess}
           onError={handleFacebookError}
           className="facebook-login-btn"
@@ -85,6 +92,7 @@ const SocialLogin = ({ onGoogleSuccess, onFacebookSuccess, onError }) => {
             Continue with Facebook
           </div>
         </FacebookLogin>
+        )}
       </div>
     </div>
   )

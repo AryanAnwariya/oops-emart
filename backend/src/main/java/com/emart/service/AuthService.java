@@ -20,7 +20,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
-import java.util.Random;
+import java.security.SecureRandom;
 
 @Service
 public class AuthService {
@@ -36,6 +36,14 @@ public class AuthService {
     // --- Security Encoder Injected for Password Hashing ---
     @Autowired private BCryptPasswordEncoder passwordEncoder; 
 
+    /** Trim and lower-case an email so register, login and OTP all agree. Returns null if blank. */
+    public static String normalizeEmail(String email) {
+        if (email == null || email.trim().isEmpty()) {
+            return null;
+        }
+        return email.trim().toLowerCase();
+    }
+
     // -------------------------------------------------------------------
     // I. REGISTRATION AND PASSWORD LOGIN
     // -------------------------------------------------------------------
@@ -43,6 +51,21 @@ public class AuthService {
     @Transactional
     public User registerUser(User newUser, Customer customerDetails, Retailer retailerDetails, Wholesaler wholesalerDetails) {
         
+        // 0. Validation: normalise email, require a password, allow only known roles
+        String email = normalizeEmail(newUser.getEmail());
+        if (email == null) {
+            throw new RuntimeException("Email is required.");
+        }
+        if (newUser.getPassword() == null || newUser.getPassword().isEmpty()) {
+            throw new RuntimeException("Password is required.");
+        }
+        String requestedRole = newUser.getRole() == null ? "" : newUser.getRole().trim().toUpperCase();
+        if (!requestedRole.equals("CUSTOMER") && !requestedRole.equals("RETAILER") && !requestedRole.equals("WHOLESALER")) {
+            throw new RuntimeException("Invalid role. Must be CUSTOMER, RETAILER or WHOLESALER.");
+        }
+        newUser.setEmail(email);
+        newUser.setRole(requestedRole);
+
         // 1. Validation: Check for existing email
         if (userRepo.findByEmail(newUser.getEmail()).isPresent()) {
             throw new RuntimeException("Email already in use.");
@@ -72,7 +95,11 @@ public class AuthService {
     }
     
     public User login(String email, String rawPassword) {
-        Optional<User> userOpt = userRepo.findByEmail(email);
+        String normalizedEmail = normalizeEmail(email);
+        if (normalizedEmail == null || rawPassword == null) {
+            return null;
+        }
+        Optional<User> userOpt = userRepo.findByEmail(normalizedEmail);
 
         if (userOpt.isPresent()) {
             User user = userOpt.get();
@@ -97,7 +124,7 @@ public class AuthService {
         
         try {
             // 1. Generate a random 6-digit code
-            Random random = new Random();
+            SecureRandom random = new SecureRandom();
             int otpNumber = random.nextInt(900000) + 100000; // Ensures 6-digit number (100000-999999)
             String code = String.format("%06d", otpNumber);
             
@@ -134,7 +161,11 @@ public class AuthService {
     
     @Transactional
     public boolean verifyOtp(String email, String code) {
-        // 1. Retrieve the latest OTP
+        // 1. Retrieve the latest OTP (emails are stored lower-case by sendOtp)
+        email = normalizeEmail(email);
+        if (email == null || code == null) {
+            return false;
+        }
         Optional<OTP> otpOpt = otpRepo.findTopByEmailOrderByExpirationTimeDesc(email);
 
         if (otpOpt.isPresent()) {

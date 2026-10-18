@@ -255,6 +255,11 @@ export default function LoginPage() {
         })
       })
 
+      if (loginRes.status === 501) {
+        const body = await loginRes.json().catch(() => ({}))
+        throw new Error(body.error || 'Social login is not available')
+      }
+
       if (loginRes.ok) {
         const user = await loginRes.json()
         localStorage.setItem('user', JSON.stringify(user))
@@ -321,6 +326,11 @@ export default function LoginPage() {
           provider: 'FACEBOOK'
         })
       })
+
+      if (loginRes.status === 501) {
+        const body = await loginRes.json().catch(() => ({}))
+        throw new Error(body.error || 'Social login is not available')
+      }
 
       if (loginRes.ok) {
         const user = await loginRes.json()

@@ -85,3 +85,13 @@ export async function apiFetch(url, options = {}) {
 }
 
 export const FORBIDDEN_MESSAGE = 'You do not have permission to change this item.'
+
+/** The signed-in user saved by saveSession (display only; the server decides permissions). */
+export function getUser() {
+  try {
+    const raw = localStorage.getItem('user')
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}

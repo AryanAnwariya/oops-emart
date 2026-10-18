@@ -381,59 +381,62 @@ export default function LoginPage() {
 
       <div className="login-container">
         <div className="login-header">
+          <div className="login-brand"><span className="brand-mark" aria-hidden="true">E</span>E-Mart</div>
           <h2>
-            {mode === 'login' && 'Welcome Back'}
+            {mode === 'login' && 'Sign in'}
             {mode === 'register' && 'Create Account'}
             {mode === 'otp' && 'Verify Email'}
           </h2>
           <p className="subtitle">
-            {mode === 'login' && 'Sign in to your account'}
-            {mode === 'register' && 'Join our platform today'}
+            {mode === 'login' && 'Use your email and password'}
+            {mode === 'register' && 'Choose your account type to get started'}
             {mode === 'otp' && 'Enter the verification code'}
           </p>
         </div>
 
         <div className="login-content">
-          {error && <div className="error-message">{error}</div>}
-          {success && <div className="success-message">{success}</div>}
+          {error && <div className="error-message" role="alert">{error}</div>}
+          {success && <div className="success-message" role="status">{success}</div>}
 
           {/* Login Form */}
           {mode === 'login' && (
             <form onSubmit={handleLogin} className="login-form">
               <div className="form-group">
-                <label className="form-label">Email Address</label>
-                <input
+                <label className="form-label" htmlFor="auth-1">Email Address</label>
+                <input id="auth-1"
                   type="email"
                   className="form-input"
                   value={loginForm.email}
                   onChange={(e) => setLoginForm({ ...loginForm, email: e.target.value })}
-                  placeholder="Enter your email"
+                  placeholder="you@example.com"
+                  autoComplete="email"
                   required
                 />
               </div>
               <div className="form-group">
-                <label className="form-label">Password</label>
-                <input
+                <label className="form-label" htmlFor="auth-2">Password</label>
+                <input id="auth-2"
                   type="password"
                   className="form-input"
                   value={loginForm.password}
                   onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
-                  placeholder="Enter your password"
+                  placeholder="Your password"
+                  autoComplete="current-password"
                   required
                 />
               </div>
 
               <div className="login-actions">
                 <button type="submit" className="btn-primary" disabled={loading}>
-                  {loading ? 'Signing in...' : 'Sign In'}
+                  {loading ? 'Signing in…' : 'Sign in'}
                 </button>
 
                 <div className="mode-switcher">
                   <button type="button" className="btn-secondary" onClick={() => setMode('register')}>
-                    Create Account
+                    Create account
                   </button>
                   <button type="button" className="btn-ghost" onClick={() => setMode('otp')}>
-                    Use OTP
+                    Use email code
                   </button>
                 </div>
               </div>
@@ -450,31 +453,33 @@ export default function LoginPage() {
           {mode === 'register' && (
             <form onSubmit={handleRegister} className="login-form">
               <div className="form-group">
-                <label className="form-label">Email Address</label>
-                <input
+                <label className="form-label" htmlFor="auth-3">Email Address</label>
+                <input id="auth-3"
                   type="email"
                   className="form-input"
                   value={registerForm.email}
                   onChange={(e) => setRegisterForm({ ...registerForm, email: e.target.value })}
-                  placeholder="Enter your email"
+                  placeholder="you@example.com"
+                  autoComplete="email"
                   required
                 />
               </div>
               <div className="form-group">
-                <label className="form-label">Password</label>
-                <input
+                <label className="form-label" htmlFor="auth-4">Password</label>
+                <input id="auth-4"
                   type="password"
                   className="form-input"
                   value={registerForm.password}
                   onChange={(e) => setRegisterForm({ ...registerForm, password: e.target.value })}
-                  placeholder="Enter password (min 4 characters)"
+                  placeholder="At least 4 characters"
+                  autoComplete="new-password"
                   required
                   minLength={4}
                 />
               </div>
               <div className="form-group">
-                <label className="form-label">Account Type</label>
-                <select
+                <label className="form-label" htmlFor="auth-5">Account Type</label>
+                <select id="auth-5"
                   className="form-select"
                   value={registerForm.role}
                   onChange={(e) => setRegisterForm({ ...registerForm, role: e.target.value })}
@@ -486,8 +491,8 @@ export default function LoginPage() {
                 </select>
               </div>
               <div className="form-group">
-                <label className="form-label">Location (Optional)</label>
-                <input
+                <label className="form-label" htmlFor="auth-6">Location (Optional)</label>
+                <input id="auth-6"
                   type="text"
                   className="form-input"
                   value={registerForm.location}
@@ -500,8 +505,8 @@ export default function LoginPage() {
               {registerForm.role === 'CUSTOMER' && (
                 <>
                   <div className="form-group">
-                    <label className="form-label">Full Name</label>
-                    <input
+                    <label className="form-label" htmlFor="auth-7">Full Name</label>
+                    <input id="auth-7"
                       type="text"
                       className="form-input"
                       value={registerForm.customerName || ''}
@@ -510,8 +515,8 @@ export default function LoginPage() {
                     />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Phone Number</label>
-                    <input
+                    <label className="form-label" htmlFor="auth-8">Phone Number</label>
+                    <input id="auth-8"
                       type="tel"
                       className="form-input"
                       value={registerForm.customerPhone || ''}
@@ -520,8 +525,8 @@ export default function LoginPage() {
                     />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Delivery Address</label>
-                    <input
+                    <label className="form-label" htmlFor="auth-9">Delivery Address</label>
+                    <input id="auth-9"
                       type="text"
                       className="form-input"
                       value={registerForm.customerAddress || ''}
@@ -536,8 +541,8 @@ export default function LoginPage() {
               {registerForm.role === 'RETAILER' && (
                 <>
                   <div className="form-group">
-                    <label className="form-label">Owner Name</label>
-                    <input
+                    <label className="form-label" htmlFor="auth-10">Owner Name</label>
+                    <input id="auth-10"
                       type="text"
                       className="form-input"
                       value={registerForm.retailerName || ''}
@@ -546,8 +551,8 @@ export default function LoginPage() {
                     />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Shop Name</label>
-                    <input
+                    <label className="form-label" htmlFor="auth-11">Shop Name</label>
+                    <input id="auth-11"
                       type="text"
                       className="form-input"
                       value={registerForm.shopName || ''}
@@ -562,8 +567,8 @@ export default function LoginPage() {
               {registerForm.role === 'WHOLESALER' && (
                 <>
                   <div className="form-group">
-                    <label className="form-label">Business Owner</label>
-                    <input
+                    <label className="form-label" htmlFor="auth-12">Business Owner</label>
+                    <input id="auth-12"
                       type="text"
                       className="form-input"
                       value={registerForm.wholesalerName || ''}
@@ -572,8 +577,8 @@ export default function LoginPage() {
                     />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Business Registration ID</label>
-                    <input
+                    <label className="form-label" htmlFor="auth-13">Business Registration ID</label>
+                    <input id="auth-13"
                       type="text"
                       className="form-input"
                       value={registerForm.businessId || ''}
@@ -582,8 +587,8 @@ export default function LoginPage() {
                     />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Contact Information</label>
-                    <input
+                    <label className="form-label" htmlFor="auth-14">Contact Information</label>
+                    <input id="auth-14"
                       type="text"
                       className="form-input"
                       value={registerForm.contact || ''}
@@ -596,10 +601,10 @@ export default function LoginPage() {
 
               <div className="login-actions">
                 <button type="submit" className="btn-primary" disabled={loading}>
-                  {loading ? 'Creating Account...' : 'Create Account'}
+                  {loading ? 'Creating account…' : 'Create account'}
                 </button>
                 <button type="button" className="btn-secondary" onClick={() => setMode('login')}>
-                  Back to Sign In
+                  Back to sign in
                 </button>
               </div>
             </form>
@@ -609,26 +614,29 @@ export default function LoginPage() {
           {mode === 'otp' && (
             <form onSubmit={otpSent ? handleVerifyOtp : handleSendOtp} className="login-form">
               <div className="form-group">
-                <label className="form-label">Email Address</label>
-                <input
+                <label className="form-label" htmlFor="auth-15">Email Address</label>
+                <input id="auth-15"
                   type="email"
                   className="form-input"
                   value={otpForm.email}
                   onChange={(e) => setOtpForm({ ...otpForm, email: e.target.value })}
-                  placeholder="Enter your email"
+                  placeholder="you@example.com"
+                  autoComplete="email"
                   required
                   disabled={otpSent}
                 />
               </div>
               {otpSent && (
                 <div className="form-group">
-                  <label className="form-label">Verification Code</label>
-                  <input
+                  <label className="form-label" htmlFor="auth-16">Verification Code</label>
+                  <input id="auth-16"
                     type="text"
                     className="form-input"
                     value={otpForm.code}
                     onChange={(e) => setOtpForm({ ...otpForm, code: e.target.value })}
-                    placeholder="Enter 6-digit code"
+                    placeholder="6-digit code"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
                     required
                     maxLength={6}
                   />
@@ -641,8 +649,8 @@ export default function LoginPage() {
                 <button type="submit" className="btn-primary" disabled={loading}>
                   {loading
                     ? otpSent
-                      ? 'Verifying...'
-                      : 'Sending Code...'
+                      ? 'Verifying…'
+                      : 'Sending code…'
                     : otpSent
                       ? 'Verify Code'
                       : 'Send Code'}
@@ -662,7 +670,7 @@ export default function LoginPage() {
                     </button>
                   )}
                   <button type="button" className="btn-ghost" onClick={() => setMode('login')}>
-                    Back to Sign In
+                    Back to sign in
                   </button>
                 </div>
               </div>

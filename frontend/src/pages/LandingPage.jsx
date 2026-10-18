@@ -1,109 +1,59 @@
 import { Link } from 'react-router-dom'
+import { getUser } from '../api'
 import '../App.css'
 
-export default function LandingPage() {
-  return (
-    <div className="page" style={{ 
-      minHeight: '100vh', 
-      display: 'flex', 
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-      color: '#fff'
-    }}>
-      <div style={{ 
-        textAlign: 'center', 
-        maxWidth: '800px', 
-        padding: '2rem',
-        background: 'rgba(255, 255, 255, 0.1)',
-        borderRadius: '20px',
-        backdropFilter: 'blur(10px)',
-        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)'
-      }}>
-        <h1 style={{ 
-          fontSize: '4rem', 
-          margin: '0 0 1rem 0',
-          fontWeight: 'bold',
-          textShadow: '2px 2px 4px rgba(0,0,0,0.2)'
-        }}>
-          eMart
-        </h1>
-        <p style={{ 
-          fontSize: '1.5rem', 
-          margin: '0 0 2rem 0',
-          opacity: 0.95
-        }}>
-          Your One-Stop Shop for Everything
-        </p>
-        <p style={{ 
-          fontSize: '1.1rem', 
-          margin: '0 0 3rem 0',
-          opacity: 0.9,
-          lineHeight: '1.6'
-        }}>
-          Connect with retailers and wholesalers. Manage your inventory. 
-          Shop smarter, faster, and better.
-        </p>
-        
-        <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-          <Link 
-            to="/login" 
-            className="btn primary"
-            style={{ 
-              fontSize: '1.2rem', 
-              padding: '1rem 2rem',
-              minWidth: '200px'
-            }}
-          >
-            Login
-          </Link>
-          <Link 
-            to="/products" 
-            className="btn"
-            style={{ 
-              fontSize: '1.2rem', 
-              padding: '1rem 2rem',
-              minWidth: '200px',
-              background: 'rgba(255, 255, 255, 0.2)',
-              color: '#fff',
-              border: '2px solid rgba(255, 255, 255, 0.3)'
-            }}
-          >
-            Browse Products
-          </Link>
-        </div>
+const DASHBOARD = { RETAILER: '/retailer/dashboard', WHOLESALER: '/wholesaler/dashboard' }
 
-        <div style={{ 
-          marginTop: '3rem', 
-          padding: '2rem',
-          background: 'rgba(255, 255, 255, 0.05)',
-          borderRadius: '10px',
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-          gap: '2rem'
-        }}>
-          <div>
-            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.3rem' }}>👥 Customers</h3>
-            <p style={{ margin: 0, opacity: 0.8, fontSize: '0.9rem' }}>
-              Shop from verified retailers and wholesalers
-            </p>
-          </div>
-          <div>
-            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.3rem' }}>🏪 Retailers</h3>
-            <p style={{ margin: 0, opacity: 0.8, fontSize: '0.9rem' }}>
-              Manage your shop inventory and sales
-            </p>
-          </div>
-          <div>
-            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.3rem' }}>📦 Wholesalers</h3>
-            <p style={{ margin: 0, opacity: 0.8, fontSize: '0.9rem' }}>
-              Connect with retailers and expand your reach
-            </p>
-          </div>
+export default function LandingPage() {
+  const user = getUser()
+  const dashboard = user && DASHBOARD[user.role]
+
+  return (
+    <main className="page">
+      <section className="landing-hero" aria-labelledby="hero-title">
+        <h1 id="hero-title">One catalogue for local shops and their suppliers.</h1>
+        <p>
+          E-Mart lets customers browse what retailers have in stock, and gives retailers and wholesalers a simple
+          way to keep their inventory up to date.
+        </p>
+        <div className="landing-actions">
+          <Link className="btn primary large" to="/products">Browse products</Link>
+          {dashboard ? (
+            <Link className="btn large" to={dashboard}>Go to your dashboard</Link>
+          ) : !user ? (
+            <Link className="btn large" to="/login">Sign in or create an account</Link>
+          ) : null}
         </div>
-      </div>
-    </div>
+      </section>
+
+      <section aria-label="Who E-Mart is for">
+        <div className="role-grid">
+          <article className="role-card">
+            <h2>Customers</h2>
+            <p>Search the retail catalogue and see prices and stock levels before you go.</p>
+            <ul>
+              <li>Search, filter by category and sort by price</li>
+              <li>Clear in-stock and low-stock labels</li>
+            </ul>
+          </article>
+          <article className="role-card">
+            <h2>Retailers</h2>
+            <p>Manage your shop's catalogue and know what to reorder.</p>
+            <ul>
+              <li>Add products with photos, edit prices and quantities</li>
+              <li>Low-stock list for items under 10 units</li>
+            </ul>
+          </article>
+          <article className="role-card">
+            <h2>Wholesalers</h2>
+            <p>List bulk stock in a separate wholesale catalogue.</p>
+            <ul>
+              <li>Your own dashboard and inventory table</li>
+              <li>Only you can change the products you list</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+    </main>
   )
 }
-

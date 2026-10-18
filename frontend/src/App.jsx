@@ -1,384 +1,310 @@
-import { useEffect, useMemo, useState, useCallback } from 'react'
-import { apiFetch, clearSession, FORBIDDEN_MESSAGE } from './api'
+import { useEffect, useMemo, useState } from 'react'
 import { BrowserRouter, Routes, Route, Link, useNavigate, useParams } from 'react-router-dom'
 import './App.css'
+import { apiFetch, getUser } from './api'
+import { catalogue, failureMessage, networkMessage, roleForScope, scopeForRole, useProductList, useRoleGuard } from './hooks'
+import { formatPrice, isLowStock } from './utils'
 import LoginPage from './pages/LoginPage'
 import RetailerDashboard from './pages/RetailerDashboard'
 import WholesalerDashboard from './pages/WholesalerDashboard'
 import LandingPage from './pages/LandingPage'
+import Navbar from './components/Navbar'
+import ProductCard, { StockBadge } from './components/ProductCard'
+import { Thumb } from './components/InventoryDashboard'
+import { EmptyState, ErrorNotice, GridSkeleton, Loading, PageHeader, SuccessNotice } from './components/States'
 
+// ---------------------------------------------------------------------------
+// Catalogue (public browsing)
+// ---------------------------------------------------------------------------
 function ProductsPage() {
-  const [products, setProducts] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [user, setUser] = useState(null)
-  const apiBase = useMemo(() => '/api', [])
-  const navigate = useNavigate()
+  const user = getUser()
+  // A wholesaler browses the wholesale catalogue; everyone else browses the retail catalogue.
+  const scope = scopeForRole(user?.role)
+  const api = catalogue(scope)
+  const { products, loading, error, reload } = useProductList(api.list)
 
-  useEffect(() => {
-    // Load user from localStorage
-    const userData = localStorage.getItem('user')
-    if (userData) {
-      try {
-        setUser(JSON.parse(userData))
-      } catch (e) {
-        console.error('Failed to parse user data')
-        setUser(null) // Explicitly set to null on error
-      }
-    } else {
-      setUser(null) // Explicitly set to null if no user data
-    }
-  }, [])
+  const [query, setQuery] = useState('')
+  const [category, setCategory] = useState('')
+  const [sort, setSort] = useState('name')
 
-  const getImageUrl = (productId) => {
-    // Use different endpoint based on user role
-    if (user?.role === 'WHOLESALER') {
-      return `${apiBase}/wholesaler/products/${productId}/image`
-    }
-    return `${apiBase}/products/${productId}/image`
-  }
+  const categories = useMemo(
+    () => [...new Set(products.map((p) => p.category).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+    [products]
+  )
 
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true)
-      setError('')
-      try {
-        // Read user role directly from localStorage to avoid race condition
-        // This ensures we always use the correct endpoint
-        let userRole = null
-        const userData = localStorage.getItem('user')
-        if (userData) {
-          try {
-            const parsed = JSON.parse(userData)
-            userRole = parsed?.role
-          } catch (e) {
-            // Ignore parse errors, will default to retailer endpoint
-          }
-        }
-        
-        // Use different endpoint based on user role
-        const endpoint = userRole === 'WHOLESALER' 
-          ? `${apiBase}/wholesaler/products`
-          : `${apiBase}/products`
-        
-        const res = await fetch(endpoint)
-        if (res.status === 204) {
-          // NO_CONTENT - no products found
-          setProducts([])
-          setError('')
-          return
-        }
-        if (res.status === 500) {
-          setError('Server error. Please try again later.')
-          setProducts([]) // Clear products on server error
-          return
-        }
-        if (!res.ok) {
-          setProducts([]) // Clear products on other errors
-          throw new Error(`Failed to load products (${res.status})`)
-        }
-        const data = await res.json()
-        setProducts(data)
-        setError('') // Clear error on success
-      } catch (e) {
-        setProducts([]) // Clear products on fetch error
-        if (e.message.includes('Failed to fetch')) {
-          setError('Network error. Please check your connection.')
-        } else {
-          setError(e.message || 'Failed to load products')
-        }
-      } finally {
-        setLoading(false)
-      }
-    }
-    load()
-  }, [apiBase])
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    const list = products
+      .filter((p) => !category || p.category === category)
+      .filter((p) => !q || `${p.name} ${p.category || ''} ${p.description || ''}`.toLowerCase().includes(q))
+    const by = {
+      name: (a, b) => (a.name || '').localeCompare(b.name || ''),
+      'price-asc': (a, b) => a.price - b.price,
+      'price-desc': (a, b) => b.price - a.price,
+      'stock-asc': (a, b) => a.quantity - b.quantity,
+    }[sort]
+    return [...list].sort(by)
+  }, [products, query, category, sort])
 
-  const handleLogout = () => {
-    clearSession()
-    setUser(null)
-    navigate('/login')
-  }
+  const title = scope === 'wholesale' ? 'Wholesale catalogue' : 'Products'
+  const subtitle = scope === 'wholesale'
+    ? 'Bulk stock listed by wholesalers'
+    : 'Browse what local retailers have in stock'
 
   return (
-    <div className="page">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <Link to="/" className="btn ghost" style={{ textDecoration: 'none' }}>🏠 Home</Link>
-          <h1 style={{ margin: 0 }}>Products</h1>
-        </div>
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          {user ? (
-            <>
-              <span style={{ color: '#666' }}>Logged in as: {user.email} ({user.role})</span>
-              {user.role === 'RETAILER' && (
-                <Link className="btn" to="/retailer/dashboard">Retailer Dashboard</Link>
-              )}
-              {user.role === 'WHOLESALER' && (
-                <Link className="btn" to="/wholesaler/dashboard">Wholesaler Dashboard</Link>
-              )}
-              <button className="btn ghost" onClick={handleLogout}>Logout</button>
-            </>
-          ) : (
-            <Link className="btn" to="/login">Login</Link>
-          )}
-        </div>
-      </div>
-      <div className="panel">
-        <div className="panel-header">
-          <h2>Existing Stock {loading && <span className="muted">(loading…)</span>}</h2>
-          <div className="header-actions">
-            {(user?.role === 'RETAILER' || user?.role === 'WHOLESALER') && (
-              <>
-                <Link className="btn primary" to="/create">Add Stock</Link>
-                <Link className="btn ghost" to="/edit">Edit Stock</Link>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-      {error && <div className="error">{error}</div>}
-      <div className="products-grid">
-        {loading && <div className="loading">Loading…</div>}
-        {!loading && products.length === 0 && !error && (
-          <div className="empty">No products found</div>
+    <main className="page">
+      <PageHeader title={title} subtitle={subtitle} />
+      <ErrorNotice>{error}</ErrorNotice>
+
+      <div className="toolbar">
+        <label className="sr-only" htmlFor="catalogue-search">Search products</label>
+        <input
+          id="catalogue-search"
+          className="search"
+          type="search"
+          placeholder="Search by name, category or description"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        <label className="sr-only" htmlFor="catalogue-category">Category</label>
+        <select id="catalogue-category" value={category} onChange={(e) => setCategory(e.target.value)}>
+          <option value="">All categories</option>
+          {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <label className="sr-only" htmlFor="catalogue-sort">Sort by</label>
+        <select id="catalogue-sort" value={sort} onChange={(e) => setSort(e.target.value)}>
+          <option value="name">Name (A–Z)</option>
+          <option value="price-asc">Price: low to high</option>
+          <option value="price-desc">Price: high to low</option>
+          <option value="stock-asc">Stock: lowest first</option>
+        </select>
+        {!loading && products.length > 0 && (
+          <span className="result-count">{visible.length} of {products.length} products</span>
         )}
-        {products.map((p) => (
-          <Link to={`/product/${p.id}`} key={p.id} className="product-card-link">
-            <div className="product-card">
-              {(p.imageName || p.imageType) && (
-                <div className="product-image-container">
-                  <img 
-                    src={getImageUrl(p.id)} 
-                    alt={p.name}
-                    className="product-image"
-                    onError={(e) => {
-                      e.target.parentElement.style.display = 'none'
-                    }}
-                  />
-                </div>
-              )}
-              <div className="product-id">ID: {p.id}</div>
-              <div className="product-name">{p.name}</div>
-              <div className="product-price">₹{p.price}</div>
-              <div className="product-quantity">Qty: {p.quantity}</div>
-            </div>
-          </Link>
-        ))}
       </div>
-    </div>
+
+      {loading ? (
+        <GridSkeleton />
+      ) : products.length === 0 ? (
+        error ? (
+          <div className="state">
+            <button type="button" className="btn" onClick={reload}>Try again</button>
+          </div>
+        ) : (
+          <EmptyState title="No products listed yet">
+            Check back soon. Retailers and wholesalers add their stock here.
+          </EmptyState>
+        )
+      ) : visible.length === 0 ? (
+        <EmptyState
+          title="No matching products"
+          action={<button type="button" className="btn" onClick={() => { setQuery(''); setCategory('') }}>Clear filters</button>}
+        >
+          Nothing matches your search and filters.
+        </EmptyState>
+      ) : (
+        <div className="products-grid">
+          {visible.map((p) => (
+            <ProductCard key={p.id} product={p} to={api.detailRoute(p.id)} imageUrl={api.image(p.id)} />
+          ))}
+        </div>
+      )}
+    </main>
   )
 }
 
-function CreatePage() {
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [form, setForm] = useState({ name: '', description: '', category: '', price: '', quantity: '' })
+// ---------------------------------------------------------------------------
+// Shared product form fields (create + edit)
+// ---------------------------------------------------------------------------
+function validateProduct(form) {
+  const errors = {}
+  if (!form.name || !form.name.trim()) errors.name = 'Enter a product name.'
+  if (form.price !== '' && (Number.isNaN(Number(form.price)) || Number(form.price) < 0)) {
+    errors.price = 'Price cannot be negative.'
+  }
+  if (form.quantity !== '' && (!Number.isInteger(Number(form.quantity)) || Number(form.quantity) < 0)) {
+    errors.quantity = 'Quantity must be a whole number, 0 or more.'
+  }
+  return errors
+}
+
+function toPayload(form) {
+  return {
+    name: form.name.trim(),
+    description: form.description || '',
+    category: form.category || '',
+    price: Number(form.price) || 0,
+    quantity: Number(form.quantity) || 0,
+  }
+}
+
+function toFormData(payload, imageFile) {
+  const formData = new FormData()
+  formData.append('product', new Blob([JSON.stringify(payload)], { type: 'application/json' }))
+  if (imageFile) formData.append('imageFile', imageFile)
+  return formData
+}
+
+function ProductFields({ form, errors, onChange, imageFile, onImageChange, imagePreview, currentImageUrl, idPrefix }) {
+  const id = (n) => `${idPrefix}-${n}`
+  const err = (n) => (errors[n] ? { 'aria-invalid': true, 'aria-describedby': id(`${n}-err`) } : {})
+  const msg = (n) => errors[n] && <span id={id(`${n}-err`)} className="hint" style={{ color: 'var(--danger)' }}>{errors[n]}</span>
+  return (
+    <>
+      <div className="row">
+        <label htmlFor={id('name')}>Name</label>
+        <input id={id('name')} name="name" value={form.name} onChange={onChange} placeholder="e.g. Basmati Rice 1kg" required {...err('name')} />
+        {msg('name')}
+      </div>
+      <div className="row">
+        <label htmlFor={id('description')}>Description</label>
+        <textarea id={id('description')} name="description" value={form.description} onChange={onChange} placeholder="Short description (optional)" rows="3" />
+      </div>
+      <div className="form-grid">
+        <div className="row">
+          <label htmlFor={id('category')}>Category</label>
+          <input id={id('category')} name="category" value={form.category} onChange={onChange} placeholder="e.g. Grocery" />
+        </div>
+        <div className="row">
+          <label htmlFor={id('price')}>Price (₹)</label>
+          <input id={id('price')} name="price" type="number" min="0" step="0.01" value={form.price} onChange={onChange} placeholder="0.00" {...err('price')} />
+          {msg('price')}
+        </div>
+      </div>
+      <div className="form-grid">
+        <div className="row">
+          <label htmlFor={id('quantity')}>Quantity in stock</label>
+          <input id={id('quantity')} name="quantity" type="number" min="0" step="1" value={form.quantity} onChange={onChange} placeholder="0" {...err('quantity')} />
+          {msg('quantity')}
+          <span className="hint">Under 10 units is flagged as low stock.</span>
+        </div>
+      </div>
+      <div className="row">
+        <label htmlFor={id('image')}>Product image {currentImageUrl ? '(leave empty to keep the current one)' : '(optional)'}</label>
+        <input id={id('image')} type="file" accept="image/*" onChange={onImageChange} className="file-input" />
+        {imagePreview ? (
+          <div className="image-preview-container">
+            <img src={imagePreview} alt="Selected product preview" className="image-preview" />
+          </div>
+        ) : currentImageUrl ? (
+          <div className="image-preview-container">
+            <img src={currentImageUrl} alt="Current product" className="image-preview" />
+            <p className="hint">Current image</p>
+          </div>
+        ) : null}
+        {imageFile && <span className="hint">{imageFile.name}</span>}
+      </div>
+    </>
+  )
+}
+
+function useImagePicker() {
   const [imageFile, setImageFile] = useState(null)
   const [imagePreview, setImagePreview] = useState(null)
-  const [user, setUser] = useState(null)
-  const apiBase = useMemo(() => '/api', [])
-  const navigate = useNavigate()
+  const onImageChange = (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    setImageFile(file)
+    const reader = new FileReader()
+    reader.onloadend = () => setImagePreview(reader.result)
+    reader.readAsDataURL(file)
+  }
+  const reset = () => { setImageFile(null); setImagePreview(null) }
+  return { imageFile, imagePreview, onImageChange, reset }
+}
 
-  useEffect(() => {
-    // Check if user is logged in and is retailer/wholesaler
-    const userData = localStorage.getItem('user')
-    if (!userData) {
-      navigate('/login')
-      return
-    }
-    try {
-      const userObj = JSON.parse(userData)
-      setUser(userObj)
-      // Only retailers and wholesalers can create products
-      if (userObj.role !== 'RETAILER' && userObj.role !== 'WHOLESALER') {
-        navigate('/products')
-      }
-    } catch (e) {
-      navigate('/login')
-    }
-  }, [navigate])
+// ---------------------------------------------------------------------------
+// Create
+// ---------------------------------------------------------------------------
+function CreatePage() {
+  const user = useRoleGuard(['RETAILER', 'WHOLESALER'])
+  const navigate = useNavigate()
+  const [form, setForm] = useState({ name: '', description: '', category: '', price: '', quantity: '' })
+  const [errors, setErrors] = useState({})
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
+  const picker = useImagePicker()
+
+  if (!user) return <div className="page"><Loading /></div>
+  const scope = scopeForRole(user.role)
+  const api = catalogue(scope)
 
   const handleChange = (e) => {
     const { name, value } = e.target
     setForm((prev) => ({ ...prev, [name]: value }))
   }
 
-  const handleImageChange = (e) => {
-    const file = e.target.files[0]
-    if (file) {
-      setImageFile(file)
-      // Create preview
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setImagePreview(reader.result)
-      }
-      reader.readAsDataURL(file)
-    }
-  }
-
-  const createProduct = async () => {
-    if (!form.name) {
-      setError('Product name is required')
-      return
-    }
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    const found = validateProduct(form)
+    setErrors(found)
+    if (Object.keys(found).length) return
     setLoading(true)
     setError('')
     try {
-      const productData = {
-        name: form.name,
-        description: form.description || '',
-        category: form.category || '',
-        price: Number(form.price) || 0,
-        quantity: Number(form.quantity) || 0,
-      }
-
-      const formData = new FormData()
-      formData.append('product', new Blob([JSON.stringify(productData)], { type: 'application/json' }))
-      if (imageFile) {
-        formData.append('imageFile', imageFile)
-      }
-
-      // Use different endpoint based on user role
-      const endpoint = user?.role === 'WHOLESALER' 
-        ? `${apiBase}/wholesaler/products`
-        : `${apiBase}/products`
-
-      const res = await apiFetch(endpoint, {
-        method: 'POST',
-        body: formData,
-      })
-
+      const res = await apiFetch(api.create, { method: 'POST', body: toFormData(toPayload(form), picker.imageFile) })
       if (res.status === 201) {
-        // CREATED - success
-        setForm({ name: '', description: '', category: '', price: '', quantity: '' })
-        setImageFile(null)
-        setImagePreview(null)
-        // Redirect based on user role
-        if (user?.role === 'RETAILER') {
-          navigate('/retailer/dashboard')
-        } else if (user?.role === 'WHOLESALER') {
-          navigate('/wholesaler/dashboard')
-        } else {
-          navigate('/')
-        }
+        navigate(api.dashboardRoute, { state: { notice: `“${form.name.trim()}” was added to your catalogue.` } })
         return
       }
-      if (res.status === 500) {
-        setError('Server error. Please try again later.')
-        return
-      }
-      if (res.status === 403) {
-        setError(FORBIDDEN_MESSAGE)
-        return
-      }
-      if (!res.ok) {
-        throw new Error(`Create failed (${res.status})`)
-      }
+      setError(await failureMessage(res, 'Creating the product'))
     } catch (err) {
-      if (err.message.includes('Failed to fetch')) {
-        setError('Network error. Please check your connection.')
-      } else {
-        setError(err.message || 'Failed to create product')
-      }
+      setError(networkMessage(err, 'Failed to create product.'))
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="page">
+    <main className="page">
+      <PageHeader
+        title="Add product"
+        subtitle={scope === 'wholesale' ? 'List an item in the wholesale catalogue' : 'List an item in your shop'}
+        actions={<Link className="btn" to={api.dashboardRoute}>Back to dashboard</Link>}
+      />
       <div className="panel">
-        <div className="panel-header">
-          <h2>Add New Product</h2>
-          <div className="header-actions">
-            <Link 
-              className="btn ghost" 
-              to={user?.role === 'WHOLESALER' ? '/wholesaler/dashboard' : '/retailer/dashboard'}
-            >
-              Back to Dashboard
-            </Link>
-          </div>
-        </div>
-        {error && <div className="error">{error}</div>}
-        <div className="form">
-          <div className="row">
-            <label>Name</label>
-            <input name="name" value={form.name} onChange={handleChange} placeholder="Product name" />
-          </div>
-          <div className="row">
-            <label>Description</label>
-            <textarea name="description" value={form.description} onChange={handleChange} placeholder="Product description" rows="3" />
-          </div>
-          <div className="row">
-            <label>Category</label>
-            <input name="category" value={form.category} onChange={handleChange} placeholder="Product category" />
-          </div>
-          <div className="row">
-            <label>Price</label>
-            <input name="price" type="number" step="0.01" value={form.price} onChange={handleChange} placeholder="0.00" />
-          </div>
-          <div className="row">
-            <label>Quantity</label>
-            <input name="quantity" type="number" value={form.quantity} onChange={handleChange} placeholder="0" />
-          </div>
-          <div className="row">
-            <label>Product Image (Optional)</label>
-            <input 
-              type="file" 
-              accept="image/*" 
-              onChange={handleImageChange}
-              className="file-input"
-            />
-            {imagePreview && (
-              <div className="image-preview-container">
-                <img src={imagePreview} alt="Preview" className="image-preview" />
-              </div>
-            )}
-          </div>
+        <ErrorNotice>{error}</ErrorNotice>
+        <form className="form" onSubmit={handleSubmit} noValidate>
+          <ProductFields form={form} errors={errors} onChange={handleChange} idPrefix="new" {...picker} />
           <div className="actions">
-            <button className="btn primary" onClick={createProduct} disabled={loading || !form.name}>
-              {loading ? 'Saving…' : 'Create'}
-            </button>
+            <button type="submit" className="btn primary" disabled={loading}>{loading ? 'Saving…' : 'Create product'}</button>
+            <Link className="btn ghost" to={api.dashboardRoute}>Cancel</Link>
           </div>
-        </div>
+        </form>
       </div>
-    </div>
+    </main>
   )
 }
 
-function ProductDetailPage() {
+// ---------------------------------------------------------------------------
+// Detail (+ edit / delete for the owner's role)
+// ---------------------------------------------------------------------------
+function ProductDetailPage({ scope }) {
   const { id } = useParams()
+  const navigate = useNavigate()
+  const api = catalogue(scope)
+  const user = getUser()
+  // Show manage controls only to the matching seller role; the server still decides (owner check, 403).
+  const canManage = user?.role === roleForScope(scope)
+
   const [product, setProduct] = useState(null)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
   const [isEditing, setIsEditing] = useState(false)
   const [form, setForm] = useState({ name: '', description: '', category: '', price: '', quantity: '' })
-  const [imageFile, setImageFile] = useState(null)
-  const [imagePreview, setImagePreview] = useState(null)
-  const apiBase = useMemo(() => '/api', [])
-  const navigate = useNavigate()
+  const [errors, setErrors] = useState({})
+  const picker = useImagePicker()
 
-  const getImageUrl = (productId) => {
-    return `${apiBase}/products/${productId}/image`
-  }
-
-  const loadProduct = async () => {
-    if (!id) return
+  const load = async () => {
     setLoading(true)
     setError('')
     try {
-      const res = await fetch(`${apiBase}/products/${id}`)
-      if (res.status === 404) {
-        setError('Product not found')
-        return
-      }
-      if (res.status === 500) {
-        setError('Server error. Please try again later.')
-        return
-      }
+      const res = await fetch(api.one(id))
       if (!res.ok) {
-        throw new Error(`Failed to load product (${res.status})`)
+        setError(await failureMessage(res, 'Loading the product'))
+        return
       }
       const data = await res.json()
       setProduct(data)
@@ -386,702 +312,420 @@ function ProductDetailPage() {
         name: data.name || '',
         description: data.description || '',
         category: data.category || '',
-        price: data.price || '',
-        quantity: data.quantity || ''
+        price: data.price ?? '',
+        quantity: data.quantity ?? '',
       })
     } catch (e) {
-      if (e.message.includes('Failed to fetch')) {
-        setError('Network error. Please check your connection.')
-      } else {
-        setError(e.message || 'Failed to load product')
-      }
+      setError(networkMessage(e, 'Failed to load product.'))
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    loadProduct()
-  }, [id, apiBase])
+    load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, scope])
+
+  const backTo = canManage ? api.dashboardRoute : '/products'
+  const backLabel = canManage ? 'Back to dashboard' : 'Back to products'
 
   const handleChange = (e) => {
     const { name, value } = e.target
     setForm((prev) => ({ ...prev, [name]: value }))
   }
 
-  const handleImageChange = (e) => {
-    const file = e.target.files[0]
-    if (file) {
-      setImageFile(file)
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setImagePreview(reader.result)
-      }
-      reader.readAsDataURL(file)
-    }
-  }
-
-  const handleEdit = () => {
-    setIsEditing(true)
-    setImageFile(null)
-    setImagePreview(null)
-  }
-
-  const handleCancel = () => {
+  const startEditing = () => { setNotice(''); setError(''); setErrors({}); setIsEditing(true) }
+  const cancelEditing = () => {
     setIsEditing(false)
-    setImageFile(null)
-    setImagePreview(null)
+    setErrors({})
+    picker.reset()
     if (product) {
       setForm({
-        name: product.name || '',
-        description: product.description || '',
-        category: product.category || '',
-        price: product.price || '',
-        quantity: product.quantity || ''
+        name: product.name || '', description: product.description || '', category: product.category || '',
+        price: product.price ?? '', quantity: product.quantity ?? '',
       })
     }
   }
 
-  const handleSave = async () => {
-    if (!form.name) {
-      setError('Product name is required')
-      return
-    }
-    setLoading(true)
+  const handleSave = async (e) => {
+    e.preventDefault()
+    const found = validateProduct(form)
+    setErrors(found)
+    if (Object.keys(found).length) return
+    setSaving(true)
     setError('')
     try {
-      const productData = {
-        name: form.name,
-        description: form.description || '',
-        category: form.category || '',
-        price: Number(form.price) || 0,
-        quantity: Number(form.quantity) || 0,
-      }
-
-      const formData = new FormData()
-      formData.append('product', new Blob([JSON.stringify(productData)], { type: 'application/json' }))
-      if (imageFile) {
-        formData.append('imageFile', imageFile)
-      }
-
-      const res = await apiFetch(`${apiBase}/products/update/${id}`, {
-        method: 'PUT',
-        body: formData,
-      })
-
+      const res = await apiFetch(api.update(id), { method: 'PUT', body: toFormData(toPayload(form), picker.imageFile) })
       if (res.status === 200) {
         setIsEditing(false)
-        setImageFile(null)
-        setImagePreview(null)
-        await loadProduct()
+        picker.reset()
+        setNotice('Changes saved.')
+        await load()
         return
       }
-      if (res.status === 404) {
-        setError('Product not found')
-        return
-      }
-      if (res.status === 500) {
-        setError('Server error. Please try again later.')
-        return
-      }
-      if (res.status === 403) {
-        setError(FORBIDDEN_MESSAGE)
-        return
-      }
-      if (!res.ok) {
-        throw new Error(`Update failed (${res.status})`)
-      }
+      setError(await failureMessage(res, 'Saving the product'))
     } catch (err) {
-      if (err.message.includes('Failed to fetch')) {
-        setError('Network error. Please check your connection.')
-      } else {
-        setError(err.message || 'Failed to update product')
-      }
+      setError(networkMessage(err, 'Failed to save product.'))
     } finally {
-      setLoading(false)
+      setSaving(false)
     }
   }
 
   const handleDelete = async () => {
-    if (!window.confirm(`Are you sure you want to delete "${product.name}"? This action cannot be undone.`)) {
-      return
-    }
-    
-    setLoading(true)
+    if (!window.confirm(`Delete “${product.name}”? This cannot be undone.`)) return
+    setSaving(true)
     setError('')
     try {
-      const res = await apiFetch(`${apiBase}/products/delete/${id}`, {
-        method: 'DELETE',
-      })
-
+      const res = await apiFetch(api.remove(id), { method: 'DELETE' })
       if (res.status === 200) {
-        // Success - redirect to dashboard
-        navigate('/retailer/dashboard')
+        navigate(api.dashboardRoute, { state: { notice: `“${product.name}” was deleted.` } })
         return
       }
-      if (res.status === 404) {
-        setError('Product not found')
-        return
-      }
-      if (res.status === 500) {
-        setError('Server error. Please try again later.')
-        return
-      }
-      if (res.status === 403) {
-        setError(FORBIDDEN_MESSAGE)
-        return
-      }
-      if (!res.ok) {
-        throw new Error(`Delete failed (${res.status})`)
-      }
+      setError(await failureMessage(res, 'Deleting the product'))
     } catch (err) {
-      if (err.message.includes('Failed to fetch')) {
-        setError('Network error. Please check your connection.')
-      } else {
-        setError(err.message || 'Failed to delete product')
-      }
+      setError(networkMessage(err, 'Failed to delete product.'))
     } finally {
-      setLoading(false)
+      setSaving(false)
     }
   }
 
   if (loading && !product) {
-    return (
-      <div className="page">
-        <div className="panel">
-          <div className="loading">Loading product details…</div>
-        </div>
-      </div>
-    )
-  }
-
-  if (error && !product) {
-    return (
-      <div className="page">
-        <div className="panel">
-          <div className="panel-header">
-            <h2>Product Details</h2>
-            <div className="header-actions">
-              <Link className="btn ghost" to="/retailer/dashboard">Back to Dashboard</Link>
-            </div>
-          </div>
-          {error && <div className="error">{error}</div>}
-        </div>
-      </div>
-    )
+    return <main className="page"><Loading label="Loading product…" /></main>
   }
 
   if (!product) {
-    return null
+    return (
+      <main className="page">
+        <PageHeader title="Product" actions={<Link className="btn" to={backTo}>{backLabel}</Link>} />
+        <ErrorNotice>{error || 'Product not found.'}</ErrorNotice>
+      </main>
+    )
   }
+
+  const hasImage = Boolean(product.imageName || product.imageType)
+  const imageUrl = api.image(product.id)
 
   if (isEditing) {
     return (
-      <div className="page">
+      <main className="page">
+        <PageHeader title="Edit product" actions={<Link className="btn" to={backTo}>{backLabel}</Link>} />
         <div className="panel">
-          <div className="panel-header">
-            <h2>Edit Product</h2>
-            <div className="header-actions">
-              <Link className="btn ghost" to="/retailer/dashboard">Back to Dashboard</Link>
-            </div>
-          </div>
-          {error && <div className="error">{error}</div>}
-          <div className="form">
-            <div className="row">
-              <label>Name</label>
-              <input name="name" value={form.name} onChange={handleChange} placeholder="Product name" />
-            </div>
-            <div className="row">
-              <label>Description</label>
-              <textarea name="description" value={form.description} onChange={handleChange} placeholder="Product description" rows="3" />
-            </div>
-            <div className="row">
-              <label>Category</label>
-              <input name="category" value={form.category} onChange={handleChange} placeholder="Product category" />
-            </div>
-            <div className="row">
-              <label>Price</label>
-              <input name="price" type="number" step="0.01" value={form.price} onChange={handleChange} placeholder="0.00" />
-            </div>
-            <div className="row">
-              <label>Quantity</label>
-              <input name="quantity" type="number" value={form.quantity} onChange={handleChange} placeholder="0" />
-            </div>
-            <div className="row">
-              <label>Product Image (Optional - leave empty to keep current image)</label>
-              <input 
-                type="file" 
-                accept="image/*" 
-                onChange={handleImageChange}
-                className="file-input"
-              />
-              {imagePreview && (
-                <div className="image-preview-container">
-                  <img src={imagePreview} alt="Preview" className="image-preview" />
-                </div>
-              )}
-              {!imagePreview && (product.imageName || product.imageType) && (
-                <div className="image-preview-container">
-                  <img src={getImageUrl(product.id)} alt="Current" className="image-preview" />
-                  <p style={{ color: 'rgba(255, 255, 255, 0.6)', fontSize: '0.85rem', marginTop: '0.5rem' }}>Current image</p>
-                </div>
-              )}
-            </div>
+          <ErrorNotice>{error}</ErrorNotice>
+          <form className="form" onSubmit={handleSave} noValidate>
+            <ProductFields
+              form={form}
+              errors={errors}
+              onChange={handleChange}
+              idPrefix="edit"
+              {...picker}
+              currentImageUrl={hasImage ? imageUrl : null}
+            />
             <div className="actions">
-              <button className="btn primary" onClick={handleSave} disabled={loading || !form.name}>
-                {loading ? 'Saving…' : 'Save Changes'}
-              </button>
-              <button className="btn ghost" onClick={handleCancel} disabled={loading}>
-                Cancel
-              </button>
+              <button type="submit" className="btn primary" disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</button>
+              <button type="button" className="btn ghost" onClick={cancelEditing} disabled={saving}>Cancel</button>
             </div>
-          </div>
+          </form>
         </div>
-      </div>
+      </main>
     )
   }
 
   return (
-    <div className="page">
+    <main className="page">
+      <nav className="breadcrumb" aria-label="Breadcrumb">
+        <Link to={backTo}>{canManage ? 'Dashboard' : 'Products'}</Link> / <span>{product.name}</span>
+      </nav>
+      <SuccessNotice>{notice}</SuccessNotice>
+      <ErrorNotice>{error}</ErrorNotice>
       <div className="panel">
-        <div className="panel-header">
-          <h2>Product Details</h2>
-          <div className="header-actions">
-            <button className="btn primary" onClick={handleEdit} disabled={loading}>Edit Product</button>
-            <button className="btn danger" onClick={handleDelete} disabled={loading}>
-              {loading ? 'Deleting…' : 'Delete Product'}
-            </button>
-            <Link className="btn ghost" to="/retailer/dashboard">Back to Dashboard</Link>
-          </div>
-        </div>
-        {error && <div className="error">{error}</div>}
         <div className="product-detail">
-          {(product.imageName || product.imageType) && (
-            <div className="product-detail-image-container">
-              <img 
-                src={getImageUrl(product.id)} 
+          <div className="product-detail-image-container">
+            {hasImage ? (
+              <img
+                src={imageUrl}
                 alt={product.name}
                 className="product-detail-image"
-                onError={(e) => {
-                  e.target.parentElement.style.display = 'none'
-                }}
+                onError={(e) => { e.currentTarget.style.display = 'none' }}
               />
-            </div>
-          )}
+            ) : (
+              <span className="media-placeholder" aria-hidden="true">{(product.name || '?').charAt(0).toUpperCase()}</span>
+            )}
+          </div>
           <div className="product-detail-info">
-            <div className="detail-row">
-              <span className="detail-label">Product ID:</span>
-              <span className="detail-value">{product.id}</span>
-            </div>
-            <div className="detail-row">
-              <span className="detail-label">Name:</span>
-              <span className="detail-value">{product.name}</span>
-            </div>
-            {product.description && (
-              <div className="detail-row">
-                <span className="detail-label">Description:</span>
-                <span className="detail-value">{product.description}</span>
+            {product.category && <span className="product-category">{product.category}</span>}
+            <h1 className="detail-title">{product.name}</h1>
+            <div className="detail-price">{formatPrice(product.price)}</div>
+            <div><StockBadge quantity={product.quantity} /></div>
+            {product.description && <p className="detail-description">{product.description}</p>}
+            <dl className="detail-list">
+              <dt>Quantity</dt><dd>{product.quantity}</dd>
+              <dt>Product ID</dt><dd>{product.id}</dd>
+            </dl>
+            {canManage && (
+              <div className="actions">
+                <button type="button" className="btn primary" onClick={startEditing} disabled={saving}>Edit product</button>
+                <button type="button" className="btn danger" onClick={handleDelete} disabled={saving}>
+                  {saving ? 'Working…' : 'Delete product'}
+                </button>
               </div>
             )}
-            {product.category && (
-              <div className="detail-row">
-                <span className="detail-label">Category:</span>
-                <span className="detail-value">{product.category}</span>
-              </div>
-            )}
-            <div className="detail-row">
-              <span className="detail-label">Price:</span>
-              <span className="detail-value price">₹{product.price}</span>
-            </div>
-            <div className="detail-row">
-              <span className="detail-label">Quantity:</span>
-              <span className="detail-value">{product.quantity}</span>
-            </div>
           </div>
         </div>
       </div>
-    </div>
+    </main>
   )
 }
 
-function LowStockPage() {
-  const [products, setProducts] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [user, setUser] = useState(null)
-  const apiBase = useMemo(() => '/api', [])
-  const navigate = useNavigate()
-
-  useEffect(() => {
-    // Check if user is logged in and is retailer
-    const userData = localStorage.getItem('user')
-    if (!userData) {
-      navigate('/login')
-      return
-    }
-    try {
-      const userObj = JSON.parse(userData)
-      if (userObj.role !== 'RETAILER') {
-        navigate('/login')
-        return
-      }
-      setUser(userObj)
-    } catch (e) {
-      navigate('/login')
-    }
-  }, [navigate])
-
-  const loadProducts = useCallback(async () => {
-    setLoading(true)
-    setError('')
-    try {
-      const res = await apiFetch(`${apiBase}/products/mine`)
-      if (res.status === 204) {
-        setProducts([])
-        return
-      }
-      if (res.status === 500) {
-        setError('Server error. Please try again later.')
-        return
-      }
-      if (!res.ok) {
-        throw new Error(`Failed to load products (${res.status})`)
-      }
-      const data = await res.json()
-      setProducts(data)
-    } catch (e) {
-      if (e.message.includes('Failed to fetch')) {
-        setError('Network error. Please check your connection.')
-      } else {
-        setError(e.message || 'Failed to load products')
-      }
-    } finally {
-      setLoading(false)
-    }
-  }, [apiBase])
-
-  useEffect(() => {
-    if (user) {
-      loadProducts()
-    }
-  }, [user, loadProducts])
-
-  const getImageUrl = (productId) => {
-    return `${apiBase}/products/${productId}/image`
-  }
-
-  const lowStockProducts = products.filter(p => (p.quantity || 0) < 10)
-
-  if (!user) {
-    return <div className="page"><div className="loading">Loading...</div></div>
-  }
-
-  return (
-    <div className="page">
-      <div className="panel">
-        <div className="panel-header">
-          <h2>Low on Stock {loading && <span className="muted">(loading…)</span>}</h2>
-          <div className="header-actions">
-            <Link className="btn ghost" to="/retailer/dashboard">Back to Dashboard</Link>
-            <button className="btn ghost" onClick={loadProducts}>Refresh</button>
-          </div>
-        </div>
-        {error && <div className="error">{error}</div>}
-        
-        {loading && (
-          <div className="loading">Loading products…</div>
-        )}
-        {!loading && lowStockProducts.length === 0 && (
-          <div className="empty">Great! No products are low on stock. All products have sufficient quantity (≥10 units).</div>
-        )}
-        {!loading && lowStockProducts.length > 0 && (
-          <div>
-            <p style={{ marginBottom: '1rem', color: '#666' }}>
-              {lowStockProducts.length} product{lowStockProducts.length !== 1 ? 's' : ''} with less than 10 units in stock
-            </p>
-            <div className="products-grid">
-              {lowStockProducts.map((p) => (
-                <Link to={`/product/${p.id}`} key={p.id} className="product-card-link">
-                  <div className="product-card">
-                    {(p.imageName || p.imageType) && (
-                      <div className="product-image-container">
-                        <img 
-                          src={getImageUrl(p.id)} 
-                          alt={p.name}
-                          className="product-image"
-                          onError={(e) => {
-                            e.target.parentElement.style.display = 'none'
-                          }}
-                        />
-                      </div>
-                    )}
-                    <div className="product-id">ID: {p.id}</div>
-                    <div className="product-name">{p.name}</div>
-                    <div className="product-price">₹{p.price}</div>
-                    <div className="product-quantity" style={{ color: p.quantity < 10 ? '#dc2626' : 'inherit', fontWeight: 'bold' }}>
-                      Qty: {p.quantity} ⚠️
-                    </div>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
+// ---------------------------------------------------------------------------
+// Edit stock (quick price / quantity editor)
+// ---------------------------------------------------------------------------
 function EditPage() {
-  const [products, setProducts] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const user = useRoleGuard(['RETAILER', 'WHOLESALER'])
+  const scope = scopeForRole(user?.role)
+  const api = catalogue(scope)
+  const { products, loading, error: loadError, reload } = useProductList(api.mine, { auth: true })
   const [form, setForm] = useState({ id: '', name: '', price: '', quantity: '' })
-  const [user, setUser] = useState(null)
-  const apiBase = useMemo(() => '/api', [])
-  const navigate = useNavigate()
+  const [errors, setErrors] = useState({})
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+  const [saving, setSaving] = useState(false)
 
-  useEffect(() => {
-    // Check if user is logged in and is retailer/wholesaler
-    const userData = localStorage.getItem('user')
-    if (!userData) {
-      navigate('/login')
-      return
-    }
-    try {
-      const userObj = JSON.parse(userData)
-      setUser(userObj)
-      // Only retailers and wholesalers can edit products
-      if (userObj.role !== 'RETAILER' && userObj.role !== 'WHOLESALER') {
-        navigate('/products')
-      }
-    } catch (e) {
-      navigate('/login')
-    }
-  }, [navigate])
+  if (!user) return <div className="page"><Loading /></div>
 
-  const fetchProducts = async () => {
-    setLoading(true)
+  const select = (p) => {
+    setNotice('')
     setError('')
-    try {
-      // Use different endpoint based on user role
-      const endpoint = user?.role === 'WHOLESALER' 
-        ? `${apiBase}/wholesaler/products/mine`
-        : `${apiBase}/products/mine`
-      
-      const res = await apiFetch(endpoint)
-      if (res.status === 204) {
-        // NO_CONTENT - no products found
-        setProducts([])
-        return
-      }
-      if (res.status === 500) {
-        setError('Server error. Please try again later.')
-        return
-      }
-      if (!res.ok) {
-        throw new Error(`Failed to load products (${res.status})`)
-      }
-      const data = await res.json()
-      setProducts(data)
-    } catch (err) {
-      if (err.message.includes('Failed to fetch')) {
-        setError('Network error. Please check your connection.')
-      } else {
-        setError(err.message || 'Failed to load products')
-      }
-    } finally {
-      setLoading(false)
-    }
+    setErrors({})
+    setForm({ id: String(p.id), name: p.name || '', price: String(p.price ?? ''), quantity: String(p.quantity ?? '') })
   }
 
-  useEffect(() => { 
-    if (user) {
-      fetchProducts()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, apiBase])
-
-  const saveChanges = async () => {
-    if (!form.id) { setError('Product ID is required'); return }
-    setLoading(true)
+  const save = async (e) => {
+    e.preventDefault()
+    if (!form.id) { setError('Select a product from the list first.'); return }
+    const found = validateProduct(form)
+    setErrors(found)
+    if (Object.keys(found).length) return
+    setSaving(true)
     setError('')
+    setNotice('')
     try {
+      // Keep description/category: the update endpoint replaces every field it receives.
       const existing = products.find((p) => String(p.id) === String(form.id)) || {}
-      const productData = {
-        name: form.name,
+      const payload = {
+        name: form.name.trim(),
         description: existing.description,
         category: existing.category,
         price: Number(form.price) || 0,
         quantity: Number(form.quantity) || 0,
       }
-      const formData = new FormData()
-      formData.append('product', new Blob([JSON.stringify(productData)], { type: 'application/json' }))
-      // Use different endpoint based on user role
-      const updateEndpoint = user?.role === 'WHOLESALER' 
-        ? `${apiBase}/wholesaler/products/update/${form.id}`
-        : `${apiBase}/products/update/${form.id}`
-      
-      const res = await apiFetch(updateEndpoint, {
-        method: 'PUT',
-        body: formData,
-      })
-      
+      const res = await apiFetch(api.update(form.id), { method: 'PUT', body: toFormData(payload, null) })
       if (res.status === 200) {
-        // OK - success
+        setNotice(`Saved “${payload.name}”.`)
         setForm({ id: '', name: '', price: '', quantity: '' })
-        await fetchProducts()
+        await reload()
         return
       }
-      if (res.status === 404) {
-        setError('Product not found')
-        return
-      }
-      if (res.status === 500) {
-        setError('Server error. Please try again later.')
-        return
-      }
-      if (res.status === 403) {
-        setError(FORBIDDEN_MESSAGE)
-        return
-      }
-      if (!res.ok) {
-        throw new Error(`Update failed (${res.status})`)
-      }
+      setError(await failureMessage(res, 'Saving the product'))
     } catch (err) {
-      if (err.message.includes('Failed to fetch')) {
-        setError('Network error. Please check your connection.')
-      } else {
-        setError(err.message || 'Failed to update product')
-      }
+      setError(networkMessage(err, 'Failed to save product.'))
     } finally {
-      setLoading(false)
+      setSaving(false)
     }
   }
 
-  const deleteProduct = async (id) => {
-    if (!id) return
-    if (!window.confirm('Are you sure you want to delete this product?')) return
-    
-    setLoading(true)
+  const remove = async (p) => {
+    if (!window.confirm(`Delete “${p.name}”? This cannot be undone.`)) return
     setError('')
+    setNotice('')
     try {
-      // Use different endpoint based on user role
-      const deleteEndpoint = user?.role === 'WHOLESALER' 
-        ? `${apiBase}/wholesaler/products/delete/${id}`
-        : `${apiBase}/products/delete/${id}`
-      
-      const res = await apiFetch(deleteEndpoint, { method: 'DELETE' })
-      
+      const res = await apiFetch(api.remove(p.id), { method: 'DELETE' })
       if (res.status === 200) {
-        // OK - success
-        await fetchProducts()
+        if (String(form.id) === String(p.id)) setForm({ id: '', name: '', price: '', quantity: '' })
+        setNotice(`Deleted “${p.name}”.`)
+        await reload()
         return
       }
-      if (res.status === 404) {
-        setError('Product not found')
-        return
-      }
-      if (res.status === 500) {
-        setError('Server error. Please try again later.')
-        return
-      }
-      if (res.status === 403) {
-        setError(FORBIDDEN_MESSAGE)
-        return
-      }
-      if (!res.ok) {
-        throw new Error(`Delete failed (${res.status})`)
-      }
+      setError(await failureMessage(res, 'Deleting the product'))
     } catch (err) {
-      if (err.message.includes('Failed to fetch')) {
-        setError('Network error. Please check your connection.')
-      } else {
-        setError(err.message || 'Failed to delete product')
-      }
-    } finally {
-      setLoading(false)
+      setError(networkMessage(err, 'Failed to delete product.'))
     }
   }
+
+  const fieldErr = (n) => (errors[n] ? { 'aria-invalid': true, 'aria-describedby': `es-${n}-err` } : {})
+  const msg = (n) => errors[n] && <span id={`es-${n}-err`} className="hint" style={{ color: 'var(--danger)' }}>{errors[n]}</span>
 
   return (
-    <div className="page">
-      <div className="panel">
-        <div className="panel-header">
-          <h2>Edit Stock</h2>
-          <div className="header-actions">
-            <Link className="btn ghost" to="/retailer/dashboard">Back to Dashboard</Link>
-          </div>
+    <main className="page">
+      <PageHeader
+        title="Edit stock"
+        subtitle="Pick a product, then update its name, price or quantity"
+        actions={<Link className="btn" to={api.dashboardRoute}>Back to dashboard</Link>}
+      />
+      <SuccessNotice>{notice}</SuccessNotice>
+      <ErrorNotice>{error || loadError}</ErrorNotice>
+
+      <div className="edit-layout">
+        <div className="panel">
+          <form className="form" onSubmit={save} noValidate>
+            <div className="row">
+              <label htmlFor="es-id">Selected product ID</label>
+              <input id="es-id" value={form.id} readOnly placeholder="Select a product from the list" />
+            </div>
+            <div className="row">
+              <label htmlFor="es-name">Name</label>
+              <input id="es-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} disabled={!form.id} {...fieldErr('name')} />
+              {msg('name')}
+            </div>
+            <div className="row">
+              <label htmlFor="es-price">Price (₹)</label>
+              <input id="es-price" type="number" min="0" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} disabled={!form.id} {...fieldErr('price')} />
+              {msg('price')}
+            </div>
+            <div className="row">
+              <label htmlFor="es-quantity">Quantity</label>
+              <input id="es-quantity" type="number" min="0" step="1" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} disabled={!form.id} {...fieldErr('quantity')} />
+              {msg('quantity')}
+            </div>
+            <div className="actions">
+              <button type="submit" className="btn primary" disabled={saving || !form.id}>{saving ? 'Saving…' : 'Save changes'}</button>
+            </div>
+          </form>
         </div>
-        {error && <div className="error">{error}</div>}
-        <div className="grid">
-          <div className="panel">
-            <h3>Enter Product ID and New Details</h3>
-            <div className="form">
-              <div className="row">
-                <label>Product ID</label>
-                <input name="id" type="text" value={form.id} onChange={(e) => setForm({ ...form, id: e.target.value })} placeholder="Click a product on the right to select it" />
-              </div>
-              <div className="row">
-                <label>New Name</label>
-                <input name="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Product name" />
-              </div>
-              <div className="row">
-                <label>New Price</label>
-                <input name="price" type="number" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} placeholder="0.00" />
-              </div>
-              <div className="row">
-                <label>New Quantity</label>
-                <input name="quantity" type="number" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} placeholder="0" />
-              </div>
-              <div className="actions">
-                <button className="btn primary" onClick={saveChanges} disabled={loading || !form.id}>Save Changes</button>
-              </div>
+
+        <div>
+          {loading ? (
+            <Loading label="Loading your products…" />
+          ) : products.length === 0 ? (
+            <EmptyState title="No products yet" action={<Link className="btn primary" to="/create">Add a product</Link>}>
+              Add a product first, then you can edit it here.
+            </EmptyState>
+          ) : (
+            <div className="table-wrap">
+              <table className="data-table">
+                <caption className="sr-only">Your products. Select a row to edit it.</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Product</th>
+                    <th scope="col" className="num">Price</th>
+                    <th scope="col" className="num">Qty</th>
+                    <th scope="col"><span className="sr-only">Actions</span></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {products.map((p) => (
+                    <tr key={p.id} className={String(form.id) === String(p.id) ? 'is-selected' : ''}>
+                      <td>
+                        <div className="name-cell">
+                          <Thumb product={p} imageUrl={api.image(p.id)} />
+                          <div className="cell-name">{p.name}</div>
+                        </div>
+                      </td>
+                      <td className="num">{formatPrice(p.price)}</td>
+                      <td className="num">{p.quantity}</td>
+                      <td className="actions-cell">
+                        <button type="button" className="btn small" onClick={() => select(p)} aria-label={`Edit ${p.name}`}>Edit</button>{' '}
+                        <button type="button" className="btn small danger" onClick={() => remove(p)} aria-label={`Delete ${p.name}`}>Delete</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          </div>
-          <div className="panel">
-            <h3>All Products {loading && <span className="muted">(loading…)</span>}</h3>
-            <div className="table">
-              <div className="thead">
-                <div>ID</div>
-                <div>Name</div>
-                <div>Price</div>
-                <div>Qty</div>
-                <div>Actions</div>
-              </div>
-              <div className="tbody">
-                {products.length === 0 && (
-                  <div className="empty">No products found</div>
-                )}
-                {products.map((p) => (
-                  <div
-                    className="tr"
-                    key={p.id}
-                    style={{ cursor: 'pointer' }}
-                    title="Click to edit this product"
-                    onClick={() => setForm({ id: String(p.id), name: p.name || '', price: String(p.price ?? ''), quantity: String(p.quantity ?? '') })}
-                  >
-                    <div>{p.id}</div>
-                    <div>{p.name}</div>
-                    <div>{p.price}</div>
-                    <div>{p.quantity}</div>
-                    <div className="row-actions">
-                      <button className="btn small danger" onClick={(e) => { e.stopPropagation(); deleteProduct(p.id) }} disabled={loading}>Delete</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+          )}
         </div>
       </div>
-    </div>
+    </main>
   )
 }
 
-function App() {
+// ---------------------------------------------------------------------------
+// Low stock (retailers)
+// ---------------------------------------------------------------------------
+function LowStockPage() {
+  const user = useRoleGuard(['RETAILER'])
+  const api = catalogue('retail')
+  const { products, loading, error, reload } = useProductList(api.mine, { auth: true })
+
+  const low = useMemo(
+    () => products.filter((p) => isLowStock(p.quantity)).sort((a, b) => a.quantity - b.quantity),
+    [products]
+  )
+
+  if (!user) return <div className="page"><Loading /></div>
+
+  return (
+    <main className="page">
+      <PageHeader
+        title="Low stock"
+        subtitle="Products with fewer than 10 units, lowest first"
+        actions={
+          <>
+            <button type="button" className="btn" onClick={reload} disabled={loading}>Refresh</button>
+            <Link className="btn" to={api.dashboardRoute}>Back to dashboard</Link>
+          </>
+        }
+      />
+      <ErrorNotice>{error}</ErrorNotice>
+      {loading ? (
+        <Loading label="Checking your stock…" />
+      ) : low.length === 0 && !error ? (
+        <EmptyState title="Nothing to refill">All your products have 10 or more units in stock.</EmptyState>
+      ) : (
+        <div className="table-wrap">
+          <table className="data-table">
+            <caption className="sr-only">Products to refill</caption>
+            <thead>
+              <tr>
+                <th scope="col">Product</th>
+                <th scope="col" className="num">Price</th>
+                <th scope="col" className="num">Quantity</th>
+                <th scope="col">Status</th>
+                <th scope="col"><span className="sr-only">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {low.map((p) => (
+                <tr key={p.id}>
+                  <td>
+                    <div className="name-cell">
+                      <Thumb product={p} imageUrl={api.image(p.id)} />
+                      <div>
+                        <div className="cell-name">{p.name}</div>
+                        {p.category && <div className="cell-sub">{p.category}</div>}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="num">{formatPrice(p.price)}</td>
+                  <td className="num">{p.quantity}</td>
+                  <td><StockBadge quantity={p.quantity} /></td>
+                  <td className="actions-cell">
+                    <Link className="btn small primary" to={api.detailRoute(p.id)}>Update stock</Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </main>
+  )
+}
+
+function NotFoundPage() {
+  return (
+    <main className="page">
+      <EmptyState title="Page not found" action={<Link className="btn primary" to="/products">Browse products</Link>}>
+        The page you are looking for does not exist.
+      </EmptyState>
+    </main>
+  )
+}
+
+export default function App() {
   return (
     <BrowserRouter>
+      <Navbar />
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/products" element={<ProductsPage />} />
@@ -1091,12 +735,10 @@ function App() {
         <Route path="/wholesaler/dashboard" element={<WholesalerDashboard />} />
         <Route path="/create" element={<CreatePage />} />
         <Route path="/edit" element={<EditPage />} />
-        <Route path="/product/:id" element={<ProductDetailPage />} />
+        <Route path="/product/:id" element={<ProductDetailPage scope="retail" />} />
+        <Route path="/wholesaler/product/:id" element={<ProductDetailPage scope="wholesale" />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </BrowserRouter>
   )
 }
-
-export default App
-
-

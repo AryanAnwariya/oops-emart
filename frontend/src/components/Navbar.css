@@ -1,0 +1,91 @@
+.navbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.navbar-inner {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 24px;
+  min-height: 60px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+  text-decoration: none;
+  flex-shrink: 0;
+}
+.brand:hover { color: var(--text); text-decoration: none; }
+
+.brand-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: var(--primary);
+  color: #fff;
+  font-weight: 800;
+  font-size: 1rem;
+  display: grid;
+  place-items: center;
+}
+.brand-name { font-weight: 750; font-size: 1.1rem; letter-spacing: -0.02em; }
+
+.nav-links {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  align-self: stretch;
+}
+
+.nav-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 12px;
+  color: var(--text-2);
+  font-size: 0.92rem;
+  font-weight: 550;
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+.nav-link:hover { color: var(--text); text-decoration: none; background: var(--surface-2); }
+.nav-link.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+.nav-user { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+
+.user-chip { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.2; max-width: 220px; }
+.user-email { font-size: 0.82rem; color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.user-role { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+
+/* Narrow screens: brand + account on the first row, links scroll on a second row */
+@media (max-width: 760px) {
+  .navbar-inner {
+    flex-wrap: wrap;
+    padding: 8px 16px 0;
+    gap: 8px 12px;
+  }
+  .brand { order: 1; }
+  .nav-user { order: 2; margin-left: auto; }
+  .nav-links {
+    order: 3;
+    flex-basis: 100%;
+    overflow-x: auto;
+    margin: 0 -16px;
+    padding: 0 8px;
+    min-height: 42px;
+    scrollbar-width: none;
+  }
+  .nav-links::-webkit-scrollbar { display: none; }
+  .user-chip { display: none; }
+}
